@@ -53,6 +53,7 @@ export function loadConfig(overrides = {}) {
     maxConcurrencyCap: 64,
     firstChunkTimeoutMs: num(env.MOONLIGHT_FIRST_CHUNK_MS, 60_000),
     idleTimeoutMs: 30_000,
+    waitingKeepaliveMs: 5_000, // SSE comment while a dispatched job waits for its first token
     jobDeadlineMs: 180_000,
 
     pingIntervalMs: 15_000,
