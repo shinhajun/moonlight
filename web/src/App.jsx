@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, navigate, usePath } from './router.jsx';
-import { flash, useEventStatus, useFlash, useMe, usd } from './api.js';
+import { flash, signOut, useFlash, useMe, usd } from './api.js';
+import { Icon } from './components/ui.jsx';
 import Landing from './pages/Landing.jsx';
 import Models from './pages/Models.jsx';
 import ModelDetail from './pages/ModelDetail.jsx';
@@ -9,7 +10,7 @@ import Developers from './pages/Developers.jsx';
 import Me from './pages/Me.jsx';
 import AddComputer from './pages/AddComputer.jsx';
 import Pair from './pages/Pair.jsx';
-import Login from './pages/Login.jsx';
+import Login, { loginPath } from './pages/Login.jsx';
 import Trust from './pages/Trust.jsx';
 
 const REDIRECTS = { '/me': '/me/sell', '/sell': '/me/sell', '/buy': '/me/buy', '/signup': '/login?mode=signup', '/keys': '/developers' };
@@ -54,8 +55,9 @@ function ThemeToggle() {
     }
   };
   const night = theme === 'night';
+  const label = `Switch to ${night ? 'day' : 'night'} shift`;
   return (
-    <button type="button" className="shift-toggle" onClick={flip} aria-pressed={night} aria-label={`Switch to ${night ? 'day' : 'night'} shift`}>
+    <button type="button" className="shift-toggle" onClick={flip} aria-pressed={night} aria-label={label} title={label}>
       <span className="shift-track" aria-hidden>
         <svg className="sun" viewBox="0 0 16 16" width="14" height="14">
           <circle cx="8" cy="8" r="3.2" fill="currentColor" />
@@ -68,62 +70,156 @@ function ThemeToggle() {
         </svg>
         <span className="shift-knob" />
       </span>
-      <span className="shift-label">{night ? 'Night shift' : 'Day shift'}</span>
     </button>
   );
 }
 
-function Masthead({ path }) {
-  const status = useEventStatus();
-  const { me } = useMe({ interval: 30_000 });
-  const at = (p) => (path === p || (p !== '/' && path.startsWith(p + '/')) ? 'page' : undefined);
+// Closes a popover on outside click, Escape, or navigation.
+function usePopover(path) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const esc = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return [open, setOpen, ref];
+}
+
+const initial = (me) => (me.account.name || me.account.email || '?').trim().charAt(0).toUpperCase();
+
+async function leave() {
+  await signOut();
+  navigate('/');
+}
+
+function AccountMenu({ me, path }) {
+  const [open, setOpen, ref] = usePopover(path);
   return (
-    <header className="masthead">
+    <div className="acct" ref={ref}>
+      <button type="button" className="acct-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="num acct-balance">{usd(me.balance_microusd, 2)}</span>
+        <span className="avatar" aria-hidden>
+          {initial(me)}
+        </span>
+        <span className="sr-only">Account menu for {me.account.name}</span>
+      </button>
+      {open && (
+        <div className="acct-pop" role="menu">
+          <div className="acct-who">
+            <b>{me.account.name}</b>
+            <span>{me.account.email}</span>
+          </div>
+          <Link to="/me/sell" role="menuitem">
+            My Moonlight
+          </Link>
+          <Link to="/me/buy" role="menuitem">
+            Usage &amp; balance
+          </Link>
+          <Link to="/developers" role="menuitem">
+            API keys
+          </Link>
+          <button type="button" role="menuitem" onClick={leave}>
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LINKS = [
+  ['/chat', 'Chat'],
+  ['/models', 'Models'],
+  ['/developers', 'Developers'],
+  ['/trust', 'Trust'],
+];
+
+function Masthead({ path }) {
+  const { me } = useMe({ interval: 30_000 });
+  const [menu, setMenu, menuRef] = usePopover(path);
+  const at = (p) => (path === p || (p !== '/' && path.startsWith(p + '/')) ? 'page' : undefined);
+  const signIn = path === '/login' ? '/login' : loginPath();
+  return (
+    <header className="masthead" ref={menuRef}>
       <div className="masthead-in wrap">
         <Link to="/" className="wordmark" aria-label="Moonlight home">
           <Crescent />
           <span>Moonlight</span>
         </Link>
         <nav className="nav" aria-label="Main">
-          <Link to="/chat" aria-current={at('/chat')}>Chat</Link>
-          <Link to="/models" aria-current={at('/models')}>Models</Link>
-          <Link to="/developers" aria-current={at('/developers')}>Developers</Link>
-          <Link to="/trust" aria-current={at('/trust')}>Trust</Link>
-          <span className="nav-gap" aria-hidden />
-          {me ? (
-            <Link to="/me/sell" className="nav-account" aria-current={at('/me')}>
-              My Moonlight<small className="num">{usd(me.balance_microusd, 2)}</small>
+          {LINKS.map(([to, label]) => (
+            <Link key={to} to={to} aria-current={at(to)}>
+              {label}
             </Link>
-          ) : (
-            me === null && (
-              <Link to="/login" className="nav-account" aria-current={at('/login')}>
-                Sign in
-              </Link>
-            )
-          )}
-          <Link to="/add" className="nav-cta" aria-current={at('/add')}>
-            Sell<span className="nav-long"> your computer</span>
-          </Link>
+          ))}
         </nav>
         <div className="masthead-end">
           {me ? (
-            <Link to="/me/sell" className="me-mini" aria-label="My Moonlight">
-              <span className="num">{usd(me.balance_microusd, 2)}</span>
-            </Link>
+            <AccountMenu me={me} path={path} />
           ) : (
             me === null && (
-              <Link to="/login" className="me-mini">
+              <Link to={signIn} className="nav-quiet">
                 Sign in
               </Link>
             )
           )}
-          <span className={`wire-status ${status}`} title={status === 'live' ? 'Receiving live network events' : 'Reconnecting to live events'}>
-            <i />
-            <span>{status === 'live' ? 'On the wire' : 'Reconnecting'}</span>
-          </span>
+          <Link to="/add" className="nav-sell" aria-current={at('/add')}>
+            Sell your computer
+          </Link>
           <ThemeToggle />
+          <button type="button" className="menu-btn" aria-expanded={menu} aria-controls="mobile-menu" aria-label={menu ? 'Close menu' : 'Open menu'} onClick={() => setMenu((m) => !m)}>
+            <span className={`burger ${menu ? 'x' : ''}`} aria-hidden>
+              <i />
+              <i />
+              <i />
+            </span>
+          </button>
         </div>
       </div>
+      {menu && (
+        <div className="mobile-menu" id="mobile-menu">
+          <nav className="wrap mobile-links" aria-label="Main">
+            {LINKS.map(([to, label]) => (
+              <Link key={to} to={to} aria-current={at(to)}>
+                {label}
+              </Link>
+            ))}
+          </nav>
+          <div className="wrap mobile-account">
+            {me ? (
+              <>
+                <div className="acct-who">
+                  <span className="avatar" aria-hidden>
+                    {initial(me)}
+                  </span>
+                  <div>
+                    <b>{me.account.name}</b>
+                    <span className="num">{usd(me.balance_microusd, 2)} balance</span>
+                  </div>
+                </div>
+                <Link to="/me/sell">My Moonlight</Link>
+                <Link to="/developers">API keys</Link>
+                <button type="button" className="link" onClick={leave}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              me === null && <Link to={signIn}>Sign in</Link>
+            )}
+            <Link to="/add" className="btn btn-primary">
+              Sell your computer <Icon name="arrow" />
+            </Link>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

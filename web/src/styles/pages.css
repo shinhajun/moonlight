@@ -213,107 +213,46 @@ pre code,
   background: var(--lamp);
 }
 
-/* wire + manifesto */
-.split-wire {
+/* story */
+.story {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
-  gap: var(--s-8);
-  padding-block: var(--s-8);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--s-5) var(--s-8);
+  padding-block: var(--s-9) var(--s-8);
+  align-items: start;
 }
-.wire-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 2px solid var(--ink);
-  padding-bottom: var(--s-3);
-}
-.wire-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  min-height: 460px;
-}
-.wire-row {
+.story-head {
   display: grid;
-  grid-template-columns: 74px minmax(0, 1.2fr) minmax(0, 1.4fr) 64px 92px;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 13px 0;
-  border-bottom: 1px solid var(--rule);
-  font-size: var(--text-sm);
-  animation: row-in 0.8s var(--ease-out);
-}
-.wire-row time {
-  color: var(--ink-3);
-  font-size: var(--text-xs);
-}
-.wire-model {
-  font-weight: 700;
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wire-to {
-  color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wire-to svg {
-  vertical-align: -1px;
-  color: var(--lamp);
-}
-:root[data-theme='day'] .wire-to svg {
-  color: var(--brass);
-}
-.wire-ms {
-  color: var(--ink-3);
-  text-align: right;
-}
-.wire-cost {
-  text-align: right;
-  font-weight: 700;
-  color: var(--brass);
-}
-.wire-check .wire-to {
-  font-style: italic;
-  font-family: var(--font-serif);
-  font-size: 0.95rem;
-}
-.wire-check .wire-badge {
-  grid-column: span 2;
-  text-align: right;
-}
-.manifesto {
-  align-self: start;
+  gap: var(--s-4);
   position: sticky;
   top: 90px;
-  display: grid;
-  gap: var(--s-5);
-  padding-top: var(--s-2);
 }
-.manifesto-text {
+.story-body {
+  columns: 2;
+  column-gap: var(--s-7);
   font-family: var(--font-serif);
-  font-size: clamp(1.35rem, 2vw, 1.7rem);
-  line-height: 1.32;
+  font-size: clamp(1.25rem, 1.7vw, 1.45rem);
+  line-height: 1.38;
 }
-.manifesto-text em {
-  font-style: italic;
-  color: var(--brass);
+.story-body p {
+  margin-bottom: 0.8em;
+  break-inside: avoid;
 }
-.manifesto-text strong {
-  font-weight: 400;
-  background: linear-gradient(transparent 62%, var(--lamp-soft) 62%);
-}
-.manifesto-text:first-of-type::first-letter {
+.story-body p:first-child::first-letter {
   float: left;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: 4.2em;
-  line-height: 0.82;
+  font-size: 4.4em;
+  line-height: 0.8;
   padding: 6px 10px 0 0;
   color: var(--ink);
+}
+.story-body em {
+  color: var(--brass);
+}
+.story-body strong {
+  font-weight: 400;
+  background: linear-gradient(transparent 62%, var(--lamp-soft) 62%);
 }
 
 /* two ways in */
@@ -489,14 +428,6 @@ pre code,
   min-width: 220px;
   display: grid;
   gap: 6px;
-}
-.wire-quiet {
-  display: grid;
-  gap: var(--s-3);
-  justify-items: start;
-  padding: var(--s-6) 0;
-  font-size: 1.2rem;
-  color: var(--ink-2);
 }
 .mgrid {
   display: grid;
@@ -2975,7 +2906,7 @@ pre code,
   .hero-title {
     position: relative;
   }
-  .split-wire,
+  .story,
   .ways,
   .trust-teaser,
   .models-head,
@@ -2994,12 +2925,14 @@ pre code,
   .chat-signin {
     grid-template-columns: minmax(0, 1fr);
   }
-  .split-wire {
-    gap: var(--s-6);
+  .story {
+    padding-block: var(--s-7) var(--s-6);
   }
-  .manifesto {
+  .story-head {
     position: static;
-    order: -1;
+  }
+  .story-body {
+    columns: 1;
   }
   .way,
   .way + .way {
@@ -3014,28 +2947,6 @@ pre code,
   }
   .teaser-flag {
     grid-column: 1;
-  }
-  .wire-row {
-    grid-template-columns: 62px minmax(0, 1fr) auto;
-    row-gap: 2px;
-  }
-  .wire-row .wire-to {
-    grid-column: 2;
-    grid-row: 2;
-  }
-  .wire-row .wire-ms {
-    display: none;
-  }
-  .wire-row .wire-cost {
-    grid-column: 3;
-    grid-row: 1;
-  }
-  .wire-check .wire-badge {
-    grid-column: 3;
-    grid-row: 1 / span 2;
-  }
-  .wire-list {
-    min-height: 0;
   }
   .gauge-read {
     font-size: 2.4rem;
@@ -3227,7 +3138,7 @@ pre code,
   /* Chat becomes a single column with a drawer for history. */
   .chat-page {
     grid-template-columns: 1fr;
-    height: calc(100dvh - 97px);
+    height: calc(100dvh - 57px);
   }
   .chat-side {
     position: fixed;
@@ -3319,4 +3230,85 @@ pre code,
 .codetabs,
 .chat-col {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* ================================================================ SIGN IN */
+.login-panel {
+  display: grid;
+  gap: var(--s-4);
+}
+.btn-google {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.2rem;
+}
+.btn-google:hover svg {
+  transform: none;
+}
+.g-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: oklch(0.99 0 0);
+}
+.btn-google.nudge {
+  animation: nudge 0.5s var(--ease-out) 2;
+}
+@keyframes nudge {
+  30% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+.email-toggle {
+  justify-self: start;
+  font-size: var(--text-sm);
+}
+.signin-cta {
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+  padding: var(--s-4) 0;
+}
+/* Signed-out chat: the composer slot becomes a link to sign in. */
+.composer-cta {
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 18px;
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  cursor: pointer;
+}
+.composer-cta:hover {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--lamp-soft);
+}
+.composer-cta .composer-btn {
+  display: grid;
 }

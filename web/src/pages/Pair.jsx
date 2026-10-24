@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, friendly, hardware, osLabel, useApi, useMe, refreshMe } from '../api.js';
 import { Link, navigate } from '../router.jsx';
-import { AuthForm } from './Login.jsx';
+import { loginPath } from './Login.jsx';
 import { formatCode } from './AddComputer.jsx';
 import ModelsReview from '../components/ModelsReview.jsx';
 import { Icon } from '../components/ui.jsx';
@@ -110,6 +110,9 @@ export default function Pair({ code }) {
   useEffect(() => {
     if (approved) window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [approved]);
+  useEffect(() => {
+    if (me === null && valid) navigate(loginPath(`/pair/${code}`), { replace: true });
+  }, [me, valid, code]);
 
   const approve = async () => {
     setBusy(true);
@@ -187,16 +190,7 @@ export default function Pair({ code }) {
                   </Link>
                 </div>
               </>
-            ) : (
-              me === null && (
-                <div className="pair-auth">
-                  <h1 className="pair-q">
-                    Sign in to approve <span>{node.name}</span>
-                  </h1>
-                  <AuthForm compact />
-                </div>
-              )
-            )}
+            ) : null}
           </div>
         )}
 

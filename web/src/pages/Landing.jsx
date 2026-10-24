@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, modelPath } from '../router.jsx';
-import { badgeOf, useApi, useEvents, usd, ms, clock, int } from '../api.js';
+import { Link } from '../router.jsx';
+import { badgeOf, useApi, useEvents, usd, int } from '../api.js';
 import { useNetwork } from '../network.js';
 import Village from '../components/Village.jsx';
 import { Badge, CopyBox, Icon, Odometer, Stamp, useTween, BADGE_COPY } from '../components/ui.jsx';
@@ -128,73 +128,6 @@ function Instruments() {
   );
 }
 
-function Wire({ names }) {
-  const [rows, setRows] = useState([]);
-  const [quiet, setQuiet] = useState(false);
-  useEffect(() => {
-    const id = setTimeout(() => setQuiet(true), 4000);
-    return () => clearTimeout(id);
-  }, []);
-  useEvents((type, d) => {
-    if (type !== 'request' && type !== 'verification') return;
-    setRows((r) => [{ type, d, key: `${type}-${d.ts}-${d.request_id || d.listing_id}-${Math.random()}` }, ...r].slice(0, 9));
-  });
-  return (
-    <div className="wire" aria-live="off">
-      <div className="wire-head">
-        <h2 className="title-md">On the wire</h2>
-        <span className="livedot live">
-          <i />
-          Live
-        </span>
-      </div>
-      <ol className="wire-list">
-        {rows.length === 0 && quiet && (
-          <li className="wire-quiet">
-            <p className="italic">Quiet on the wire. Requests show up here the moment a home computer answers one.</p>
-            <Link to="/chat" className="link">
-              Send the first one
-            </Link>
-          </li>
-        )}
-        {rows.length === 0 &&
-          !quiet &&
-          Array.from({ length: 6 }, (_, i) => (
-            <li key={i} className="wire-row">
-              <span className="skeleton" style={{ height: 14, width: `${60 + ((i * 13) % 30)}%` }} />
-            </li>
-          ))}
-        {rows.map(({ type, d, key }) =>
-          type === 'request' ? (
-            <li key={key} className="wire-row">
-              <time className="num">{clock(d.ts)}</time>
-              <Link to={modelPath(d.model_id)} className="wire-model">
-                {d.model_id}
-              </Link>
-              <span className="wire-to">
-                <Icon name="arrow" size={12} /> {d.node_name}
-              </span>
-              <span className="wire-ms num">{ms(d.latency_ms)}</span>
-              <span className="wire-cost num">{usd(d.cost_microusd)}</span>
-            </li>
-          ) : (
-            <li key={key} className={`wire-row wire-check ${d.passed ? 'pass' : 'fail'}`}>
-              <time className="num">{clock(d.ts)}</time>
-              <span className="wire-model">{d.model_id}</span>
-              <span className="wire-to">
-                Inspected {names[d.node_id] || d.seller_name || 'a home'}: {d.passed ? 'passed' : 'failed'}
-              </span>
-              <span className="wire-badge">
-                <Badge state={badgeOf(d.state, d.method)} size="sm" />
-              </span>
-            </li>
-          ),
-        )}
-      </ol>
-    </div>
-  );
-}
-
 export default function Landing() {
   const net = useNetwork();
   const os = useMemo(detectOS, []);
@@ -229,18 +162,21 @@ export default function Landing() {
 
       <Instruments />
 
-      <section className="wrap split-wire">
-        <Wire names={Object.fromEntries(net.nodes.map((n) => [n.node_id, n.name]))} />
-        <aside className="manifesto">
+      <section className="wrap story">
+        <header className="story-head">
           <p className="kicker">Steel &amp; steam, again</p>
-          <p className="manifesto-text">
-            Before the mills, cloth was made at home. Merchants <em>put out</em> wool to thousands of cottages and collected the cloth.
+          <h2 className="title-lg">The work goes back to the cottages</h2>
+        </header>
+        <div className="story-body">
+          <p>
+            Before the mills, cloth was made at home. Merchants <em>put out</em> wool to cottages, families spun and wove it by the fire, and the merchant came back for the cloth.
           </p>
-          <p className="manifesto-text">
-            The factory won on coordination, not craft. Today intelligence is made in a few datacenters. <strong>Moonlight does the coordinating</strong>, so the work can go back to
-            the cottages.
+          <p>The factory won on coordination, not craft: one building, one clock, one owner. Today intelligence is made the same way, in a few datacenters.</p>
+          <p>
+            <strong>Moonlight does the coordinating.</strong> It routes each request to a free home computer, meters it, pays the owner, and quietly checks the work, so the
+            machines already in our homes can take the night shift.
           </p>
-        </aside>
+        </div>
       </section>
 
       <section className="wrap ways">

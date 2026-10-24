@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ago, badgeOf, clock, hardware, int, ms, osLabel, signOut, useApi, useEvents, useMe, usd, refreshMe } from '../api.js';
 import { Link, modelPath, navigate } from '../router.jsx';
-import { AuthForm } from './Login.jsx';
+import { loginPath } from './Login.jsx';
 import ModelsReview from '../components/ModelsReview.jsx';
 import { Badge, House, Icon, Odometer, Stamp, useNow, useTween } from '../components/ui.jsx';
 
@@ -321,6 +321,9 @@ function Buying({ me }) {
 export default function Me({ tab }) {
   const { me } = useMe({ interval: 15_000 });
   const counts = useMemo(() => ({ buy: me?.requests?.length }), [me]);
+  useEffect(() => {
+    if (me === null) navigate(loginPath(`/me/${tab}`), { replace: true });
+  }, [me, tab]);
   if (me === undefined) {
     return (
       <main className="wrap page">
@@ -328,20 +331,7 @@ export default function Me({ tab }) {
       </main>
     );
   }
-  if (me === null) {
-    return (
-      <main className="wrap page login-page">
-        <div className="login-copy">
-          <p className="kicker">My Moonlight</p>
-          <h1 className="title-xl">Clock in.</h1>
-          <p className="lede">Sign in to see your computers, earnings and usage.</p>
-        </div>
-        <div className="panel login-panel">
-          <AuthForm initialMode="login" />
-        </div>
-      </main>
-    );
-  }
+  if (me === null) return null;
   return (
     <main className="wrap page me-page">
       <header className="me-head">
