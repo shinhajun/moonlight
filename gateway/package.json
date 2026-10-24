@@ -1,0 +1,17 @@
+{
+  "name": "moonlight-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Moonlight gateway: buyer API, seller WebSocket, routing, metering, ledger, verification",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

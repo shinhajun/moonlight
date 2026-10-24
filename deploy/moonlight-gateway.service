@@ -1,0 +1,24 @@
+[Unit]
+Description=Moonlight gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=moonlight
+Group=moonlight
+WorkingDirectory=/opt/moonlight/gateway
+EnvironmentFile=/etc/moonlight/gateway.env
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=8080 MOONLIGHT_DB=/var/lib/moonlight/moonlight.sqlite
+Environment=MOONLIGHT_RELEASE_DIR=/opt/moonlight/release
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/moonlight
+
+[Install]
+WantedBy=multi-user.target
