@@ -111,14 +111,15 @@ function anySeller(ctx, r) {
     const ids = r.model.auto ? [...c.listings.values()] : [c.listings.get(r.model.id)].filter(Boolean);
     if (ids.some((lid) => !r.model.auto || AUTO_MODELS[r.model.id].match(ctx.store.listing(lid)))) return true;
   }
-  const since = now() - ctx.config.offlineGraceMs;
-  for (const [lid, ts] of ctx.hub.recentlyOffline) {
-    if (ts < since) {
-      ctx.hub.recentlyOffline.delete(lid);
-      continue;
-    }
-    const l = ctx.store.listing(lid);
-    if (l && (r.model.auto ? AUTO_MODELS[r.model.id].match(l) : l.model_id === r.model.id)) return true;
+  // Nodes that left recently (last_seen is written on disconnect, including when the gateway itself restarts).
+  const recent = ctx.db.all(
+    `SELECT DISTINCT l.id, n.id AS node_id FROM listings l JOIN node_listings x ON x.listing_id = l.id JOIN nodes n ON n.id = x.node_id
+     WHERE l.policy = 'live' AND n.last_seen > ?${r.model.auto ? '' : ' AND l.model_id = ?'}`,
+    ...[now() - ctx.config.offlineGraceMs, ...(r.model.auto ? [] : [r.model.id])],
+  );
+  for (const { id, node_id } of recent) {
+    if (ctx.hub.conns.has(node_id)) continue; // connected but paused or draining: not coming back by itself
+    if (!r.model.auto || AUTO_MODELS[r.model.id].match(ctx.store.listing(id))) return true;
   }
   return false;
 }
