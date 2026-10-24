@@ -128,7 +128,7 @@ function anySeller(ctx, r) {
 async function acquire(ctx, r, exclude) {
   if (!anySeller(ctx, r)) throw noCapacity(ctx, r.model, 'no_sellers');
   const find = () => {
-    const cand = rank(ctx, eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude }))[0] || null;
+    const cand = rank(ctx, eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude }), r.model)[0] || null;
     if (cand && r.verification && cand.conn.maxConcurrency === 1 && ctx.scheduler.buyersWaiting(cand.conn)) return null;
     return cand;
   };

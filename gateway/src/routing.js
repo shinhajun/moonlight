@@ -1,5 +1,5 @@
 // Candidate listings for a request, scored: price + p50 latency + load − reputation (lowest wins).
-import { AUTO_MODELS } from './policy.js';
+import { AUTO_MODELS, paramsB } from './policy.js';
 import { p50, now } from './util.js';
 import { unitPrice } from './metering.js';
 
@@ -31,7 +31,9 @@ export function eligible(ctx, model, { filters = {}, pin = null, exclude = null,
   return out;
 }
 
-export function rank(ctx, cands) {
+// For an auto/* alias, quality comes first (verified, then the larger model of the class); price, latency and
+// load break ties.
+export function rank(ctx, cands, model = null) {
   const w = ctx.config.weights;
   const f = cands.map((c) => ({
     c,
@@ -47,7 +49,11 @@ export function rank(ctx, cands) {
     const lat = x.lat == null ? 0.5 : ml ? x.lat / ml : 0;
     x.score = w.price * (mp ? x.price / mp : 0) + w.lat * lat + w.load * (mi ? x.load / mi : 0) - (w.rep * x.rep) / 100;
   }
-  f.sort((a, b) => a.score - b.score || a.c.listing.id.localeCompare(b.c.listing.id));
+  const quality = (x) => (model?.auto ? [x.c.listing.state === 'verified' ? 1 : 0, paramsB(x.c.listing) ?? 0] : [0, 0]);
+  f.sort((a, b) => {
+    const [qa, qb] = [quality(a), quality(b)];
+    return qb[0] - qa[0] || qb[1] - qa[1] || a.score - b.score || a.c.listing.id.localeCompare(b.c.listing.id);
+  });
   return f.map((x) => x.c);
 }
 

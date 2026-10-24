@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatModel, model, say, sleep, startGateway } from './harness.js';
+import { chatModel, model, say, sleep, startGateway, waitFor } from './harness.js';
 
 const ask = (m, extra = {}) => ({ model: m, messages: [{ role: 'user', content: 'Say hello.' }], ...extra });
 
@@ -240,4 +240,42 @@ test('auto/chat-large with no large seller: 0 sellers in the catalog, and the 50
   // A specific large model never suggests the empty auto/chat-large.
   const specific = await g.chat(buyer.secret, ask('qwen3.5:35b-a3b'));
   assert.deepEqual(specific.body.moonlight.suggestions, ['qwen2.5:7b', 'auto/chat-small']);
+});
+
+test('auto/chat-small never picks a model under 1B and prefers the larger model before price', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  const hold = [];
+  await g.agent({ name: 'tiny', models: [chatModel('qwen2.5:0.5b', { params_b: 0.49, price: { out_per_m: 1 } })], behavior: say('tiny') });
+  await g.agent({ name: 'mid', models: [chatModel('qwen2.5:1.5b', { params_b: 1.5, price: { out_per_m: 50_000 } })], behavior: say('mid') });
+  await g.agent({
+    name: 'big', models: [chatModel('qwen2.5:7b', { params_b: 7.6, price: { out_per_m: 400_000 } })],
+    behavior: (job, io) => (job.body.messages[0].content === 'hold' ? new Promise((r) => hold.push(() => r(say('big')(job, io)))) : say('big')(job, io)),
+  });
+  const buyer = await g.buyer();
+
+  const best = await g.chat(buyer.secret, ask('auto/chat-small'));
+  assert.equal(best.body.moonlight.served_model, 'qwen2.5:7b', 'largest in class, even though pricier');
+
+  // With 7b busy, the next best is 1.5b, never the cheaper 0.5b.
+  const busy = g.chat(buyer.secret, { model: 'qwen2.5:7b', messages: [{ role: 'user', content: 'hold' }] });
+  await waitFor(() => hold.length === 1);
+  assert.equal((await g.chat(buyer.secret, ask('auto/chat-small'))).body.moonlight.served_model, 'qwen2.5:1.5b');
+  hold[0]();
+  await busy;
+
+  // By name it still works; the alias's catalog entry doesn't count it.
+  assert.equal((await g.chat(buyer.secret, ask('qwen2.5:0.5b'))).body.choices[0].message.content, 'tiny');
+  const alias = (await g.get('/v1/models')).body.data.find((m) => m.id === 'auto/chat-small');
+  assert.equal(alias.moonlight.sellers_online, 2);
+});
+
+test('with only sub-1B chat models online, auto/chat-small has no seller', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  await g.agent({ name: 'tiny', models: [chatModel('qwen2.5:0.5b', { params_b: 0.49 })], behavior: say('tiny') });
+  const buyer = await g.buyer();
+  const r = await g.chat(buyer.secret, ask('auto/chat-small'));
+  assert.deepEqual([r.status, r.body.moonlight.reason], [503, 'no_sellers']);
+  assert.deepEqual(r.body.moonlight.suggestions, ['qwen2.5:0.5b']);
 });

@@ -47,9 +47,10 @@ export function marketPrice(l) {
   return { in_per_m: Math.round(out / 4), out_per_m: out };
 }
 
-// auto/* aliases group listings by class.
+// auto/* aliases group listings by class. Chat aliases never pick a model under 1B (or of unknown size): those
+// answer ordinary questions badly. They can still be requested by name.
 export const AUTO_MODELS = {
-  'auto/chat-small': { kind: 'chat', title: 'Auto · small chat (≤ 9B)', match: (l) => l.kind === 'chat' && (paramsB(l) ?? 0) <= 9 },
+  'auto/chat-small': { kind: 'chat', title: 'Auto · small chat (1–9B)', match: (l) => l.kind === 'chat' && (paramsB(l) ?? 0) >= 1 && paramsB(l) <= 9 },
   'auto/chat-large': { kind: 'chat', title: 'Auto · large chat (> 9B)', match: (l) => l.kind === 'chat' && (paramsB(l) ?? 0) > 9 },
   'auto/embedding': { kind: 'embedding', title: 'Auto · embedding', match: (l) => l.kind === 'embedding' },
   'auto/decision': { kind: 'decision', title: 'Auto · decision', match: (l) => l.kind === 'decision' },
