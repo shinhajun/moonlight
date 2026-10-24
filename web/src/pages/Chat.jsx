@@ -175,7 +175,7 @@ function ChatWindow({ chat, onUpdate, models, me }) {
               <div className="chat-signin panel">
                 <div>
                   <h2 className="title-md">Sign in to chat</h2>
-                  <p className="muted small">New accounts get $5 of credit. Messages cost fractions of a cent.</p>
+                  <p className="muted small">Messages cost fractions of a cent, paid from demo credit.</p>
                 </div>
                 <AuthForm compact />
               </div>

@@ -260,7 +260,7 @@ export default function ModelDetail({ id }) {
               <CodeTabs tabs={snippets(m.kind, m.id, { verified: verifiedOnly })} />
             ) : me === null ? (
               <div className="play-auth">
-                <p className="muted small">Sign in to try {m.id}. New accounts get $5 of credit; a request costs a fraction of a cent.</p>
+                <p className="muted small">Sign in to try {m.id}. A request costs a fraction of a cent, paid from demo credit.</p>
                 <AuthForm compact />
               </div>
             ) : m.kind === 'decision' ? (

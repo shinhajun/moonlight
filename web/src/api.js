@@ -42,18 +42,44 @@ export async function signOut() {
 // ---------------------------------------------------------------- HTTP
 
 export class ApiError extends Error {
-  constructor(status, message, code, body) {
+  constructor(status, message, code, body, retryAfter) {
     super(message);
     this.status = status;
     this.code = code;
     this.body = body;
+    this.retryAfter = retryAfter;
   }
 }
 
 async function errorFrom(res) {
   const body = await res.json().catch(() => null);
   const e = body?.error;
-  return new ApiError(res.status, e?.message || `Request failed (${res.status})`, e?.code, body);
+  const retry = Number(res.headers.get('retry-after'));
+  return new ApiError(res.status, e?.message || `Request failed (${res.status})`, e?.code, body, retry > 0 ? retry : null);
+}
+
+// Rate limits (429) say what was limited and when to come back; other errors keep the server's words.
+export function friendly(err, action) {
+  if (err?.status !== 429) return err?.message || 'Something went wrong. Try again.';
+  const s = err.retryAfter;
+  const when = !s ? 'in a little while' : s >= 90 ? `in about ${Math.ceil(s / 60)} minutes` : `in ${s} seconds`;
+  const what = { signup: 'Too many new accounts from your network', login: 'Too many sign-in attempts', pair: 'Too many pairing attempts from your network' }[action] || 'Too many requests';
+  return `${what}. Please try again ${when}.`;
+}
+
+// ---------------------------------------------------------------- one-off banner under the masthead
+
+let flashState = null;
+const flashListeners = new Set();
+export function flash(message) {
+  flashState = message ? { message, id: Date.now() } : null;
+  flashListeners.forEach((fn) => fn());
+}
+export function useFlash() {
+  return useSyncExternalStore(
+    (fn) => (flashListeners.add(fn), () => flashListeners.delete(fn)),
+    () => flashState,
+  );
 }
 
 export async function api(path, { method = 'GET', body, signal, raw = false } = {}) {

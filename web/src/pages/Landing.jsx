@@ -95,7 +95,9 @@ function Instruments() {
               <Odometer value={int(s.nodes_online ?? 0)} />
               <Windows lit={s.nodes_online ?? 0} total={Math.max(24, (s.nodes_online ?? 0) + 6)} />
             </div>
-            <p className="gauge-note">computers online, from {s.sellers_online ?? '—'} sellers</p>
+            <p className="gauge-note">
+              {s.nodes_online === 1 ? 'computer' : 'computers'} online, from {s.sellers_online ?? '—'} {s.sellers_online === 1 ? 'seller' : 'sellers'}
+            </p>
           </div>
           <div className="gauge">
             <span className="kicker">Requests</span>
@@ -208,7 +210,7 @@ export default function Landing() {
               <br />
               works the <em>night shift.</em>
             </h1>
-            <p className="lede">Sell the models already running on your machine. Use models served by thousands of homes instead of one factory.</p>
+            <p className="lede">Sell the models already running on your machine. Use models served from people&apos;s homes instead of one factory.</p>
             <div className="hero-cta">
               <Link to="/add" className="btn btn-primary">
                 Sell your computer <Icon name="arrow" />
@@ -272,7 +274,7 @@ export default function Landing() {
               <b>Call the API</b> with the OpenAI SDK. Change one line: the base URL.
             </li>
             <li>
-              <b>Pay per token,</b> with $5 of credit to start.
+              <b>Pay per token,</b> starting with demo credit.
             </li>
           </ol>
           <CopyBox

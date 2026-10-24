@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, refreshMe, useMe } from '../api.js';
+import { api, flash, friendly, refreshMe, useMe, usd } from '../api.js';
 import { Link, navigate } from '../router.jsx';
 import { Icon } from '../components/ui.jsx';
 
@@ -16,11 +16,15 @@ export function AuthForm({ initialMode = 'signup', onDone, compact = false, titl
     setError(null);
     try {
       const body = mode === 'signup' ? form : { email: form.email, password: form.password };
-      await api(`/api/auth/${mode === 'signup' ? 'signup' : 'login'}`, { method: 'POST', body });
+      const r = await api(`/api/auth/${mode === 'signup' ? 'signup' : 'login'}`, { method: 'POST', body });
+      if (mode === 'signup') {
+        if (r?.notice) flash(r.notice);
+        else if (r?.demo_credit_microusd) flash(`Welcome to Moonlight. ${usd(r.demo_credit_microusd, 2)} of demo credit is on your account.`);
+      }
       await refreshMe();
       onDone?.();
     } catch (err) {
-      setError(err.message);
+      setError(friendly(err, mode));
       if (err.code === 'email_taken') setMode('login');
     } finally {
       setBusy(false);
@@ -69,7 +73,7 @@ export function AuthForm({ initialMode = 'signup', onDone, compact = false, titl
         {busy ? 'One moment…' : mode === 'signup' ? 'Create account' : 'Sign in'}
         {!busy && <Icon name="arrow" />}
       </button>
-      {mode === 'signup' && <p className="faint small">New accounts get $5 of demo credit. One account both buys and sells.</p>}
+      {mode === 'signup' && <p className="faint small">The first new account from each network gets $5 of demo credit a day. One account both buys and sells.</p>}
     </form>
   );
 }

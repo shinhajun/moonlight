@@ -1,6 +1,8 @@
 // Light/dark screenshots at desktop and mobile widths into web/.e2e/.
 // Usage: npm run dev (mock) in one shell, then
 //   node scripts/shots.mjs [--base=http://localhost:5173] [--only=landing,chat] [--themes=night,day] [--sizes=desktop,mobile]
+// Against a real gateway, sign in once and reuse the session (signup is rate limited):
+//   node scripts/shots.mjs --base=https://moonlight.hajunshin.com --account=you@example.com:password[:signup] --prefix=prod-
 import { chromium } from 'playwright-core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -13,12 +15,32 @@ const THEMES = arg('themes', 'night,day').split(',');
 const SIZES = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } };
 const sizes = arg('sizes', 'desktop,mobile').split(',');
 const OUT = new URL('../.e2e/', import.meta.url).pathname;
+const PREFIX = arg('prefix', '');
+const ACCOUNT = arg('account', '');
 mkdirSync(OUT, { recursive: true });
 
 const cached = join(homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
 const browser = await chromium.launch({ executablePath: process.env.CHROME || (existsSync(cached) ? cached : undefined) });
 
-const login = (page) => page.request.post(`${BASE}/api/auth/login`, { data: { email: 'demo@moonlight.dev', password: 'moonlight' } });
+// With --account, one session is created up front and every context starts from it.
+let shared = null;
+if (ACCOUNT) {
+  const [email, password, mode] = ACCOUNT.split(':');
+  const ctx = await browser.newContext();
+  const r = await ctx.request.post(`${BASE}/api/auth/${mode === 'signup' ? 'signup' : 'login'}`, { data: { email, password, name: 'Screenshot bot' } });
+  console.log(`${mode === 'signup' ? 'signup' : 'login'} ${r.status()} ${(await r.text()).slice(0, 200)}`);
+  shared = await ctx.storageState();
+  await ctx.close();
+}
+const login = (page) => (shared ? Promise.resolve() : page.request.post(`${BASE}/api/auth/login`, { data: { email: 'demo@moonlight.dev', password: 'moonlight' } }));
+// A model page with someone selling it: chat first, from the live catalog.
+let detailId = arg('detail', '');
+if (!detailId) {
+  const ctx = await browser.newContext();
+  const list = (await (await ctx.request.get(`${BASE}/api/models`)).json()).models.filter((m) => !m.auto && m.sellers_online > 0);
+  detailId = (list.find((m) => m.kind === 'chat') || list[0])?.id || 'qwen3.5:35b-a3b';
+  await ctx.close();
+}
 const settle = (page, ms = 1200) => page.waitForTimeout(ms);
 
 const SHOTS = {
@@ -32,8 +54,8 @@ const SHOTS = {
   },
   detail: async (page) => {
     await login(page);
-    await page.goto(`${BASE}/models/qwen3.5:35b-a3b`);
-    await settle(page);
+    await page.goto(`${BASE}/models/${detailId}`);
+    await settle(page, 1800);
   },
   decision: async (page) => {
     await login(page);
@@ -53,11 +75,11 @@ const SHOTS = {
   },
   chat: async (page) => {
     await login(page);
-    await page.goto(`${BASE}/chat?model=qwen3.5:35b-a3b`);
-    await settle(page, 600);
-    await page.getByLabel('Message').fill('Tell me about the industrial revolution and cottages');
+    await page.goto(`${BASE}/chat?model=${arg('chat-model', 'qwen3.5:35b-a3b')}`);
+    await settle(page, 800);
+    await page.getByLabel('Message').fill('In two sentences: what was the putting-out system?');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('.receipt', { timeout: 30000 });
+    await page.waitForSelector('.receipt, .capacity, .notice.warn', { timeout: 90000 });
     await settle(page, 1500);
   },
   'chat-queue': async (page) => {
@@ -124,7 +146,7 @@ const names = ONLY.length ? ONLY : Object.keys(SHOTS);
 for (const theme of THEMES) {
   for (const size of sizes) {
     for (const name of names) {
-      const ctx = await browser.newContext({ viewport: SIZES[size], deviceScaleFactor: size === 'mobile' ? 2 : 1, colorScheme: theme === 'night' ? 'dark' : 'light' });
+      const ctx = await browser.newContext({ viewport: SIZES[size], deviceScaleFactor: size === 'mobile' ? 2 : 1, colorScheme: theme === 'night' ? 'dark' : 'light', ...(shared && { storageState: shared }) });
       await ctx.addInitScript((t) => localStorage.setItem('ml-theme', t), theme);
       const page = await ctx.newPage();
       const errors = [];
@@ -135,7 +157,7 @@ for (const theme of THEMES) {
         const full = !name.startsWith('chat');
         // Clicks scroll the page; a full-page capture from scrollY > 0 paints the sticky masthead mid-page.
         if (full) await page.evaluate(() => window.scrollTo(0, 0));
-        const file = join(OUT, `${name}-${theme}-${size}.png`);
+        const file = join(OUT, `${PREFIX}${name}-${theme}-${size}.png`);
         await page.screenshot({ path: file, fullPage: full });
         console.log(`ok   ${file}${errors.length ? `  (console: ${errors.slice(0, 2).join(' | ')})` : ''}`);
       } catch (e) {

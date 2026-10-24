@@ -202,6 +202,26 @@ function events(req, res) {
   });
 }
 
+// Per-IP limits and once-a-day demo credit, like the gateway.
+const LIMITS = { signup: [5, 3_600_000], login: [20, 900_000], pair: [10, 3_600_000] };
+const hits = new Map();
+const creditDay = new Map();
+const ipOf = (req) => req.socket.remoteAddress || 'local';
+function limited(req, res, name) {
+  const [max, windowMs] = LIMITS[name];
+  const key = `${name}:${ipOf(req)}`;
+  const now = Date.now();
+  const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
+  if (recent.length >= max) {
+    const wait = Math.ceil((recent[0] + windowMs - now) / 1000);
+    fail(res, 429, 'rate_limited', `Too many attempts. Try again in ${Math.ceil(wait / 60)} min.`, {}, { 'retry-after': String(wait) });
+    return true;
+  }
+  hits.set(key, [...recent, now]);
+  return false;
+}
+const NO_CREDIT = 'Demo credit goes to the first account created from your network each day, so this one starts at $0.';
+
 const cookie = (sid) => `ml_session=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`;
 const accountOf = (u) => ({ id: u.id, email: u.email, name: u.name, handle: u.handle, created_at: u.created_at });
 
@@ -225,12 +245,18 @@ async function handle(req, res, next) {
 
   // ---- auth
   if (m === 'POST' && p === '/api/auth/signup') {
+    if (limited(req, res, 'signup')) return;
     const body = (await readJson(req)) || {};
     const r = w.signup(body);
     if (r.error) return fail(res, r.code === 'email_taken' ? 409 : 400, r.code, r.error);
-    return send(res, 201, { account: accountOf(r.user) }, { 'set-cookie': cookie(w.newSession(r.user)) });
+    const today = new Date().toISOString().slice(0, 10);
+    const credit = creditDay.get(ipOf(req)) === today ? 0 : 5_000_000;
+    if (credit) creditDay.set(ipOf(req), today);
+    r.user.balance = credit;
+    return send(res, 201, { account: accountOf(r.user), demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) }, { 'set-cookie': cookie(w.newSession(r.user)) });
   }
   if (m === 'POST' && p === '/api/auth/login') {
+    if (limited(req, res, 'login')) return;
     const u = w.login((await readJson(req)) || {});
     if (!u) return fail(res, 401, 'bad_credentials', 'That email and password do not match.');
     return send(res, 200, { account: accountOf(u) }, { 'set-cookie': cookie(w.newSession(u)) });
@@ -242,6 +268,7 @@ async function handle(req, res, next) {
 
   // ---- pairing (the agent side is unauthenticated)
   if (m === 'POST' && p === '/api/devices/pair') {
+    if (limited(req, res, 'pair')) return;
     const body = (await readJson(req)) || {};
     if (!body.node?.name) return fail(res, 400, 'bad_node', 'node.name is required.');
     return send(res, 201, w.createPair(body.node, origin));
