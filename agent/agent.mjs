@@ -21,7 +21,7 @@ const HELP = `moonlight ${VERSION}: sell the AI models running on this computer
 
 Usage
   moonlight                  connect this computer and start serving (pairs it on first run)
-  moonlight scan             list the models this computer can serve, then exit
+  moonlight scan [--json]    list the models this computer can serve, then exit
   moonlight stop             ask the running agent to finish its jobs and stop
   moonlight logout           forget this computer's token
   moonlight laya install     install the Laya decision-model runner (with uv); moonlight then starts it as needed
@@ -32,7 +32,13 @@ Options
   --price-out <usd>          chat price per 1M output tokens (default: market price)
   --price-in <usd>           price per 1M input tokens, for chat and embeddings
   --price-call <usd>         decision-model price per call
+  --vram-budget <GB|%>       the most GPU memory Moonlight may use, e.g. 8 or 50%; bigger models aren't listed
+  --no-yield                 keep serving when your own apps need the GPU (default: pause until it's quiet)
   --concurrency <n>          jobs served at once (default: OLLAMA_NUM_PARALLEL, else 1)
+  --keep-warm <a,b,...>      keep these Ollama models loaded so buyers skip the cold start; yields when
+                             something else needs the memory
+  --keep-alive <dur>         how long Ollama keeps a model loaded after a Moonlight job, e.g. 2m or 0
+                             (default: Ollama's own setting, often 5m); --keep-warm models are exempt
   --endpoint <url>           also serve an OpenAI-compatible server, e.g. http://127.0.0.1:9000/v1 (repeatable)
   --ollama <url>             Ollama address (default: OLLAMA_HOST, else http://127.0.0.1:11434)
   --laya <url>               laya-runner address (default: http://127.0.0.1:8765)
@@ -54,9 +60,9 @@ Environment: MOONLIGHT_TOKEN, MOONLIGHT_GATEWAY, MOONLIGHT_HOME (default ~/.moon
 // Command line
 // ---------------------------------------------------------------------------------------------
 
-const BOOL_FLAGS = new Set(['trusted', 'no-browser', 'plain', 'json', 'help', 'version']);
+const BOOL_FLAGS = new Set(['trusted', 'no-browser', 'plain', 'json', 'no-yield', 'help', 'version']);
 const VALUE_FLAGS = new Set(['token', 'gateway', 'name', 'models', 'price-out', 'price-in', 'price-call',
-  'concurrency', 'endpoint', 'ollama', 'laya', 'cheat-serve']);
+  'concurrency', 'endpoint', 'ollama', 'laya', 'keep-warm', 'keep-alive', 'vram-budget', 'cheat-serve']);
 
 function parseArgs(argv) {
   const opts = { endpoint: [] };
@@ -526,6 +532,10 @@ const st = {
   activeJobs: new Map(), // job_id -> {model_id, kind, started, tokens}
   activity: [], // newest first: {ts, icon, color, text, earned?, job?}
   paused: false,
+  yielding: null, // {since, reason} while the owner's own apps need the GPU
+  overBudget: [], // models that need more VRAM than --vram-budget allows: shown, not listed
+  lastUsed: new Map(), // model_id -> when its last job finished
+  lastJobAt: 0,
   draining: false,
   drainDeadline: 0,
 };
@@ -666,6 +676,24 @@ function renderDashboard() {
     dim(`${st.nodeId ? `node ${st.nodeId} · ` : ''}up ${fmtDur(now - st.startedAt)} `));
   if (st.trusted) row(` ${inverse(cyan(' REFERENCE NODE '))} ${dim('operator-run; answers verification replays')}`);
   if (st.cheat) row(` ${inverse(red(' DEMO: CHEAT MODE '))} ${red(`advertises ${st.cheat.advertised.join(', ')} but serves ${st.cheat.serve}`)}`);
+  const g = gpu.sample;
+  if (g?.source === 'nvidia' && g.total_gb) {
+    // A stacked bar: the owner's apps, Moonlight, then spare memory.
+    const bw = Math.max(10, Math.min(24, W - 90));
+    const cells = (gb) => Math.round((gb / g.total_gb) * bw);
+    const a = Math.min(bw, cells(g.others_gb));
+    const b = Math.min(bw - a, Math.max(g.moonlight_gb > 0 ? 1 : 0, cells(g.moonlight_gb)));
+    const bar = dim('█'.repeat(a)) + accent('█'.repeat(b)) + dim('·'.repeat(bw - a - b));
+    row(` ${dim('GPU')} ${g.total_gb} GB ${bar} ${dim('your apps')} ${g.others_gb} GB ${dim('·')} ${accent('Moonlight')} ${g.moonlight_gb} GB ${dim('·')} ${green('spare')} ${g.free_gb} GB`
+      + (ctx.budget != null ? dim(` · budget ${ctx.budget} GB`) : ''));
+  } else if (g?.source === 'apple') {
+    const pressure = { 1: 'normal', 2: 'warning', 4: 'critical' }[g.pressure] ?? 'unknown';
+    row(` ${dim('GPU')} ${g.total_gb ?? '?'} GB shared ${dim('·')} ${accent('Moonlight')} ${g.moonlight_gb} GB ${dim('·')} GPU busy ${g.util ?? '?'}% ${dim('·')} memory ${pressure}`
+      + (ctx.budget != null ? dim(` · budget ${ctx.budget} GB`) : ''));
+  }
+  if (st.yielding) {
+    row(` ${inverse(yellow(' ❚❚ YIELDING TO YOU '))} ${yellow(st.yielding.reason)}${dim(` · resumes after ${YIELD_QUIET_MS / 1000} s of quiet`)}`);
+  }
   lines.push('');
 
   // Stat tiles
@@ -710,7 +738,7 @@ function renderDashboard() {
   for (const c of shown) c.width ??= c.w;
   lines.push('   ' + dim(shown.map((c) => fit(c.title, c.width)).join(' ')));
   const activeModels = new Set([...st.activeJobs.values()].map((j) => j.model_id));
-  const maxModelRows = Math.max(3, H - 22);
+  const maxModelRows = Math.max(3, H - 16 - (st.activeJobs.size ? 3 : 0));
   for (const m of st.models.slice(0, maxModelRows)) {
     const [status, reason] = policyCell(m);
     const cells = {
@@ -732,6 +760,9 @@ function renderDashboard() {
     }).join(' '));
   }
   if (st.models.length > maxModelRows) lines.push(dim(`   …and ${st.models.length - maxModelRows} more`));
+  for (const m of st.overBudget.slice(0, 3)) {
+    lines.push(`   ${dim(fit(m.model_id, shown.find((c) => c.key === 'model').width))} ${yellow(`not listed: needs about ${vramNeedGb(m)} GB, over your ${ctx.budget} GB budget`)}`);
+  }
   if (!st.models.length) lines.push(dim('   No models found yet. Start Ollama (ollama serve) or another local runtime; rescanning every minute.'));
   lines.push('');
 
@@ -769,6 +800,8 @@ function renderDashboard() {
     const left = Math.max(0, Math.ceil((st.drainDeadline - now) / 1000));
     const n = st.activeJobs.size;
     row(` ${yellow(`${spin} Finishing ${n} job${n === 1 ? '' : 's'} before stopping… (${left}s)`)}`, dim('Ctrl-C again to quit now '));
+  } else if (st.yielding) {
+    row(` ${yellow(`${spin} Paused while your apps use the GPU`)}`, dim('w web dashboard · q stop '));
   } else if (st.paused) {
     row(` ${inverse(yellow(' ❚❚ PAUSED '))} ${yellow('not taking new jobs')}`, dim('p resume · w web dashboard · q stop '));
   } else {
@@ -1087,7 +1120,14 @@ function printListings(listings) {
 }
 
 function sendStatus() {
-  send({ t: 'status', paused: st.paused, inflight: st.activeJobs.size });
+  const s = gpu.sample;
+  send({
+    t: 'status',
+    paused: st.paused || !!st.yielding,
+    inflight: st.activeJobs.size,
+    ...(st.paused ? { reason: 'manual' } : st.yielding ? { reason: 'owner_busy' } : {}),
+    ...(s && { vram: { total_gb: s.total_gb, free_gb: s.free_gb, moonlight_gb: s.moonlight_gb, others_gb: s.others_gb, budget_gb: ctx.budget } }),
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1104,7 +1144,7 @@ async function runJob(msg) {
   const model = st.models.find((m) => m.model_id === model_id);
   if (!model) return send({ t: 'error', job_id, code: 'model_not_found', message: `${model_id} is not served by this node` });
   if (st.draining) return send({ t: 'error', job_id, code: 'draining', message: 'this node is shutting down' });
-  if (st.paused) return send({ t: 'error', job_id, code: 'paused', message: 'this node is paused' });
+  if (st.paused || st.yielding) return send({ t: 'error', job_id, code: 'paused', message: st.yielding ? 'the owner needs the GPU right now' : 'this node is paused' });
 
   const ac = new AbortController();
   const job = { job_id, model_id, kind, ac, started: Date.now(), first: 0, tokens: 0 };
@@ -1128,8 +1168,20 @@ async function runJob(msg) {
   } finally {
     clearTimeout(timer);
     st.activeJobs.delete(job_id);
+    st.lastUsed.set(model_id, Date.now());
+    st.lastJobAt = Date.now();
     sendStatus();
+    if (ctx.keepAlive != null && model.runtime === 'ollama' && !isWarm(model)) setKeepAlive(model);
   }
+}
+
+// Ollama's OpenAI-compatible endpoints ignore keep_alive, so set it through the native API after the job.
+// On a model that is already loaded this only moves its unload time.
+function setKeepAlive(model) {
+  const name = ctx.cheat?.advertised.includes(model.model_id) ? ctx.cheat.serve : model._route.name;
+  const [url, body] = model.kind === 'embedding' ? [`${ctx.ollama}/api/embed`, { model: name, input: [], keep_alive: ctx.keepAlive }]
+    : [`${ctx.ollama}/api/generate`, { model: name, prompt: '', keep_alive: ctx.keepAlive }];
+  getJSON(url, { body, timeout: 30_000 }).catch(() => {});
 }
 
 async function callRuntime(job, url, payload) {
@@ -1211,11 +1263,215 @@ async function serveDecision(job, base, runtimeModel, body) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// GPU: VRAM budget, who is using the memory, and yielding when the owner's own apps need it
+// ---------------------------------------------------------------------------------------------
+
+const GPU_SAMPLE_MS = 3000;
+const YIELD_QUIET_MS = Number(process.env.MOONLIGHT_YIELD_QUIET_MS) || 60_000; // resume after this long without owner activity
+const YIELD_UTIL = 40; // GPU % busy while Moonlight is idle: the owner is using it
+const gpu = { sample: null, busyHits: 0, quietSince: 0, lastStatus: null };
+
+// Usable GPU memory. Apple silicon shares RAM with the GPU, and Ollama there uses about 3/4 of it.
+function gpuTotalGb() {
+  if (!st.node?.vram_gb) return null;
+  return process.platform === 'darwin' ? round(st.node.vram_gb * 0.75) : st.node.vram_gb;
+}
+
+function parseBudget(value, totalGb) {
+  if (value == null) return null;
+  const m = String(value).trim().match(/^(\d+(?:\.\d+)?)\s*(%|gb|g)?$/i);
+  if (!m) die(`--vram-budget takes GB (e.g. 8) or a share of GPU memory (e.g. 50%), not "${value}".`);
+  if (m[2] !== '%') return parseFloat(m[1]);
+  if (!totalGb) die("--vram-budget as a percentage needs a GPU whose memory size is known; give it in GB instead.");
+  return round((totalGb * parseFloat(m[1])) / 100);
+}
+
+// Rough GPU memory a model needs while serving: weights plus KV cache and runtime overhead.
+function vramNeedGb(m) {
+  if (m.runtime === 'laya') return m._device && m._device !== 'cpu' ? 3.2 : 0;
+  return m.size_bytes ? round((m.size_bytes * 1.2) / 2 ** 30) : null;
+}
+
+function splitByBudget(models) {
+  if (ctx.budget == null) return { listed: models, over: [] };
+  const listed = [];
+  const over = [];
+  for (const m of models) (vramNeedGb(m) > ctx.budget ? over : listed).push(m);
+  return { listed, over };
+}
+
+// Who holds GPU memory right now. Moonlight's share is the listed models resident in Ollama plus the
+// laya-runner process; everything else is the owner's apps (or, on a shared server, other users).
+async function sampleGpu() {
+  const ours = new Set(st.models.filter((m) => m.runtime === 'ollama').map((m) => m._route.name));
+  const ps = await getJSON(`${ctx.ollama}/api/ps`, { timeout: 1500 }).catch(() => null);
+  const resident = (ps?.models ?? []).filter((r) => ours.has(r.name) || ours.has(r.model));
+  let moonlight = resident.reduce((sum, r) => sum + (r.size_vram ?? 0), 0) / 2 ** 30;
+  if (process.platform === 'darwin') {
+    // No nvidia-smi and powermetrics needs root: use the GPU's own utilization counter and the kernel's
+    // memory-pressure level, both readable without root.
+    const [io, pressure] = await Promise.all([
+      run('ioreg', ['-r', '-d', '1', '-w', '0', '-c', 'AGXAccelerator'], 2000),
+      run('sysctl', ['-n', 'kern.memorystatus_vm_pressure_level'], 1000),
+    ]);
+    const util = Number(io?.match(/"Device Utilization %"\s*=\s*(\d+)/)?.[1]);
+    return { source: 'apple', total_gb: gpuTotalGb(), free_gb: null, moonlight_gb: round(moonlight), others_gb: null,
+      util: Number.isFinite(util) ? util : null, pressure: Number(pressure) || null, resident };
+  }
+  const q = await run('nvidia-smi', ['--query-gpu=memory.total,memory.used,memory.free,utilization.gpu', '--format=csv,noheader,nounits'], 2000);
+  if (!q) return null;
+  const rows = q.split('\n').map((l) => l.split(',').map((x) => Number(x.trim())));
+  const sum = (i) => rows.reduce((acc, r) => acc + (r[i] || 0), 0);
+  const apps = await run('nvidia-smi', ['--query-compute-apps=pid,used_memory,process_name', '--format=csv,noheader,nounits'], 2000);
+  for (const line of apps?.split('\n') ?? []) {
+    const [, mem, name = ''] = line.split(',').map((x) => x.trim());
+    if (/laya[-_]runner/.test(name)) moonlight += Number(mem || 0) / 1024;
+  }
+  return { source: 'nvidia', total_gb: round(sum(0) / 1024), free_gb: round(sum(2) / 1024), moonlight_gb: round(moonlight),
+    others_gb: round(Math.max(0, sum(1) / 1024 - moonlight)), util: Math.max(...rows.map((r) => r[3] || 0)), pressure: null, resident };
+}
+
+// Why the owner's own work needs the GPU right now, or null.
+function ownerBusy(s) {
+  const idle = st.activeJobs.size === 0 && Date.now() - st.lastJobAt > 5000;
+  if (s.free_gb != null && s.total_gb) {
+    // Short on memory because of the owner's apps, not because of Moonlight's own models.
+    if (s.free_gb < Math.max(1.5, s.total_gb * 0.1) && s.others_gb > s.total_gb * 0.15) return `only ${s.free_gb} GB of GPU memory free`;
+  }
+  if (s.pressure >= 2) return 'your Mac is low on memory';
+  if (idle && s.util != null && s.util >= YIELD_UTIL) return `your apps are using the GPU (${s.util}%)`;
+  return null;
+}
+
+async function unload(m) {
+  const [url, body] = m.kind === 'embedding' ? [`${ctx.ollama}/api/embed`, { model: m._route.name, input: [], keep_alive: 0 }]
+    : [`${ctx.ollama}/api/generate`, { model: m._route.name, prompt: '', keep_alive: 0 }];
+  await getJSON(url, { body, timeout: 30_000 }).catch(() => {});
+}
+
+async function startYield(reason) {
+  st.yielding = { since: Date.now(), reason };
+  sendStatus();
+  log(`Pausing: ${reason}. Moonlight resumes after ${YIELD_QUIET_MS / 1000} s of quiet.`, { icon: '❚❚', color: yellow });
+  while (st.activeJobs.size && st.yielding) await sleep(500); // jobs in flight finish first
+  if (!st.yielding) return;
+  // Hand the memory back: unload whatever Moonlight has resident (keep-warm stops while yielding).
+  for (const r of gpu.sample?.resident ?? []) {
+    const m = st.models.find((x) => x.runtime === 'ollama' && (x._route.name === r.name || x._route.name === r.model));
+    if (m) await unload(m);
+  }
+  for (const w of warm.values()) w.ours = false;
+}
+
+function endYield() {
+  st.yielding = null;
+  sendStatus();
+  log('Your GPU is quiet again. Taking jobs.', { icon: '▶', color: green });
+}
+
+// Keeps Moonlight's resident models within --vram-budget by unloading the least recently used ones.
+async function enforceBudget(s) {
+  if (ctx.budget == null || s.moonlight_gb <= ctx.budget || st.activeJobs.size) return;
+  const lru = s.resident.map((r) => st.models.find((x) => x.runtime === 'ollama' && (x._route.name === r.name || x._route.name === r.model)))
+    .filter(Boolean).sort((a, b) => (st.lastUsed.get(a.model_id) ?? 0) - (st.lastUsed.get(b.model_id) ?? 0));
+  if (lru[0]) await unload(lru[0]);
+}
+
+async function gpuTick() {
+  const s = await sampleGpu().catch(() => null);
+  gpu.sample = s;
+  if (!s) return;
+  await enforceBudget(s);
+  if (ctx.yieldToOwner && !st.draining) {
+    const reason = ownerBusy(s);
+    gpu.busyHits = reason ? gpu.busyHits + 1 : 0;
+    if (reason) gpu.quietSince = 0;
+    else gpu.quietSince ||= Date.now();
+    if (!st.yielding && gpu.busyHits >= 2) startYield(reason); // two samples in a row, not a blip
+    else if (st.yielding && gpu.quietSince && Date.now() - gpu.quietSince >= YIELD_QUIET_MS) endYield();
+    else if (st.yielding && reason) st.yielding.reason = reason;
+  }
+  // Live memory numbers for the gateway and web, when they move.
+  const prev = gpu.lastStatus;
+  if (!prev || Math.abs(prev.free_gb - s.free_gb) >= 0.5 || Math.abs(prev.moonlight_gb - s.moonlight_gb) >= 0.5) {
+    gpu.lastStatus = s;
+    sendStatus();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Keep-warm: refresh listed Ollama models before they unload, without fighting for memory
+// ---------------------------------------------------------------------------------------------
+
+// Each ping asks Ollama to keep the model for two intervals, so it stays loaded while the agent runs and
+// unloads soon after the agent stops. MOONLIGHT_WARM_MS is for tests.
+const WARM_MS = Number(process.env.MOONLIGHT_WARM_MS) || 4 * 60_000;
+const WARM_KEEP_ALIVE = `${Math.ceil((2 * WARM_MS) / 1000)}s`;
+const isWarm = (m) => ctx.keepWarm.some((id) => id.replace(/:latest$/, '') === m.model_id);
+const warm = new Map(); // model_id -> {next, backoff, ours}
+
+async function freeVramBytes() {
+  if (process.platform === 'darwin') return null;
+  const out = await run('nvidia-smi', ['--query-gpu=memory.free', '--format=csv,noheader,nounits']);
+  return out ? out.split('\n').reduce((sum, v) => sum + Number(v || 0), 0) * 2 ** 20 : null;
+}
+
+// Would loading `m` fit without evicting anything? NVIDIA: free VRAM. Elsewhere: Ollama's resident set
+// against the GPU/unified memory (Ollama on macOS uses about 3/4 of RAM).
+async function fitsInMemory(m, resident) {
+  const need = (m.size_bytes ?? 0) * 1.2;
+  const free = await freeVramBytes();
+  if (free != null) return need < free * 0.9;
+  if (!st.node.vram_gb) return resident.length === 0;
+  const cap = st.node.vram_gb * 2 ** 30 * (process.platform === 'darwin' ? 0.75 : 0.95);
+  return resident.reduce((sum, r) => sum + (r.size_vram ?? r.size ?? 0), 0) + need < cap;
+}
+
+async function keepWarmTick() {
+  if (st.yielding) return;
+  const now = Date.now();
+  const ps = await getJSON(`${ctx.ollama}/api/ps`, { timeout: 2000 }).catch(() => null);
+  if (!ps) return;
+  const resident = ps.models ?? [];
+  for (const id of ctx.keepWarm) {
+    const m = st.models.find((x) => x.model_id === id.replace(/:latest$/, '') && x.runtime === 'ollama');
+    if (!m) continue;
+    const w = warm.get(m.model_id) ?? { next: 0, backoff: WARM_MS, ours: false };
+    warm.set(m.model_id, w);
+    if (now < w.next) continue;
+    const loaded = resident.some((r) => r.name === m._route.name || r.model === m._route.name);
+    if (!loaded && w.ours) {
+      // We kept it loaded and something else pushed it out: give that workload room instead of reloading.
+      w.ours = false;
+      w.backoff = Math.min(w.backoff * 2, 60 * 60_000);
+      w.next = now + w.backoff;
+      log(`${m.model_id} was unloaded to make room for something else; trying again in ${Math.round(w.backoff / 60_000)} min`, { icon: '◌', color: dim });
+      continue;
+    }
+    if (!loaded && !(await fitsInMemory(m, resident))) {
+      w.next = now + w.backoff;
+      continue;
+    }
+    const [url, body] = m.kind === 'embedding' ? [`${ctx.ollama}/api/embed`, { model: m._route.name, input: [], keep_alive: WARM_KEEP_ALIVE }]
+      : [`${ctx.ollama}/api/generate`, { model: m._route.name, prompt: '', keep_alive: WARM_KEEP_ALIVE }];
+    const ok = await getJSON(url, { body, timeout: 120_000 }).then(() => true, () => false);
+    if (!ok) { w.next = now + w.backoff; continue; }
+    if (!loaded) log(`Loaded ${m.model_id} to keep it warm`, { icon: '◆', color: cyan });
+    if (loaded && w.ours) w.backoff = WARM_MS; // it stayed put for a full round: back to the normal pace
+    w.ours = true;
+    w.next = now + WARM_MS;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Lifecycle: rescans, keyboard, graceful drain
 // ---------------------------------------------------------------------------------------------
 
 async function rescan() {
-  const { models, runtimes } = await discoverFor(ctx);
+  const found = await discoverFor(ctx);
+  const { listed: models, over } = splitByBudget(found.models);
+  const runtimes = found.runtimes;
+  st.overBudget = over;
   if (modelsKey(models) === modelsKey(st.models)) return;
   const before = new Set(st.models.map((m) => m.model_id));
   const after = new Set(models.map((m) => m.model_id));
@@ -1307,7 +1563,10 @@ async function runAgent(opts) {
   fs.mkdirSync(HOME, { recursive: true, mode: 0o700 });
   try {
     const pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
-    if (pid && pid !== process.pid && processAlive(pid)) die(`Another Moonlight agent is already running (pid ${pid}). Stop it with \`moonlight stop\`.`);
+    if (pid && pid !== process.pid && processAlive(pid)) {
+      die(`Another Moonlight agent is already running (pid ${pid}). Stop it with \`moonlight stop\`.\n`
+        + `If no agent is running, delete ${PID_FILE} and try again.`);
+    }
   } catch {}
   fs.writeFileSync(PID_FILE, String(process.pid));
   try { fs.unlinkSync(STOP_FILE); } catch {}
@@ -1324,6 +1583,10 @@ async function runAgent(opts) {
     endpoints: opts.endpoint,
     only: opts.models ? opts.models.split(',').map((s) => s.trim()).filter(Boolean) : null,
     cheat: opts['cheat-serve'] ? { serve: opts['cheat-serve'], advertised: opts.models.split(',').map((s) => s.trim().replace(/:latest$/, '')) } : null,
+    keepWarm: opts['keep-warm'] ? opts['keep-warm'].split(',').map((s) => s.trim()).filter(Boolean) : [],
+    yieldToOwner: !opts['no-yield'],
+    budget: null,
+    keepAlive: opts['keep-alive'] != null ? (/^\d+$/.test(opts['keep-alive']) ? Number(opts['keep-alive']) : opts['keep-alive']) : null,
     registryCache: new Map(),
   };
   st.trusted = ctx.trusted;
@@ -1333,9 +1596,16 @@ async function runAgent(opts) {
   const [node, found] = await Promise.all([machineInfo(opts.name), discoverFor(ctx).catch((e) => die(e.message))]);
   node.max_concurrency = defaultConcurrency(opts.concurrency);
   st.node = node;
-  st.models = found.models;
+  ctx.budget = parseBudget(opts['vram-budget'], gpuTotalGb());
+  const { listed, over } = splitByBudget(found.models);
+  st.models = listed;
+  st.overBudget = over;
   st.runtimes = found.runtimes;
+  gpu.sample = await sampleGpu().catch(() => null);
+  node.vram_budget_gb = ctx.budget;
+  node.vram_free_gb = gpu.sample?.free_gb ?? null;
   printModelTable(st.models, st.runtimes);
+  for (const m of over) process.stdout.write(`    ${dim(fit(m.model_id, 40))} ${yellow(`not listed: needs about ${vramNeedGb(m)} GB, over your ${ctx.budget} GB VRAM budget`)}\n`);
 
   const cfg = loadConfig();
   if (opts.token) { ctx.token = opts.token; ctx.tokenSource = 'flag'; }
@@ -1365,6 +1635,11 @@ async function runAgent(opts) {
     if (conn.ws && Date.now() - conn.lastFrame > STALE_MS) dropConnection();
   }, PING_MS);
   setInterval(() => rescan().catch(() => {}), RESCAN_MS);
+  setInterval(() => gpuTick().catch(() => {}), GPU_SAMPLE_MS);
+  if (ctx.keepWarm.length) {
+    setTimeout(() => keepWarmTick().catch(() => {}), 3000);
+    setInterval(() => keepWarmTick().catch(() => {}), Math.min(60_000, WARM_MS));
+  }
   let lastTick = Date.now();
   setInterval(() => {
     // A long gap between ticks means the computer slept; the socket is probably dead, so reconnect now.

@@ -13,9 +13,11 @@ Works on Apple silicon (M1 or later) running macOS 14 or newer. Intel Macs can r
 Install Ollama from [ollama.com/download](https://ollama.com/download) (or `brew install ollama`), start it, and pull a model:
 
 ```sh
-ollama pull qwen2.5:7b          # Apache-2.0, about 4.7 GB; use qwen2.5:1.5b on an 8 GB Mac
+ollama pull qwen2.5:1.5b        # Apache-2.0, 1 GB; runs on any Apple-silicon Mac
 ollama pull nomic-embed-text    # optional: lets you sell embeddings too (270 MB)
 ```
+
+With 16 GB or more you can add bigger models later, such as `qwen2.5:7b`.
 
 The agent lists every model it finds, and the gateway checks each one's license. For example, `qwen2.5:3b` is under the Qwen RESEARCH license (non-commercial), so it shows up as `blocked: license`. That is the policy working as intended, not an error.
 
@@ -80,6 +82,10 @@ To stop, press `q` or Ctrl-C, or run `moonlight stop` from another terminal. The
 | `--models a,b` | List only these models (default: everything found) |
 | `--price-out <usd>` / `--price-in <usd>` / `--price-call <usd>` | Your price per 1M output tokens / per 1M input tokens / per decision call |
 | `--concurrency <n>` | Jobs at once (default: `OLLAMA_NUM_PARALLEL`, else 1) |
+| `--vram-budget <GB\|%>` | The most GPU memory Moonlight may use, e.g. `8` or `50%`. Models that need more aren't listed, and if several listed models together go over, the least recently used ones are unloaded |
+| `--no-yield` | Keep serving even when your own apps need the GPU (see below; reference nodes use this) |
+| `--keep-alive <dur>` | How long Ollama keeps a model loaded after a Moonlight job, e.g. `2m`, or `0` to unload right away (default: Ollama's own setting). `--keep-warm` models are exempt |
+| `--keep-warm a,b` | Keep these Ollama models loaded so buyers skip the cold start: a ping every 4 min refreshes Ollama's own `keep_alive`. A cold model is loaded only if it fits in free memory. If something else evicts it, the agent backs off (8, 16, … up to 60 min) instead of fighting for VRAM |
 | `--endpoint <url>` | Also serve an OpenAI-compatible server, e.g. `http://127.0.0.1:9000/v1` (repeatable) |
 | `--ollama <url>` / `--laya <url>` | Where Ollama / laya-runner listen (defaults `127.0.0.1:11434` / `127.0.0.1:8765`) |
 | `--token <token>` | Use a token instead of pairing (`ml_nt_…` node token or `ml_st_…` seller token) |
@@ -87,6 +93,17 @@ To stop, press `q` or Ctrl-C, or run `moonlight stop` from another terminal. The
 | `--no-browser` / `--plain` | Don't open a browser / print log lines instead of the dashboard |
 
 Environment variables: `MOONLIGHT_TOKEN`, `MOONLIGHT_GATEWAY`, `MOONLIGHT_HOME` (default `~/.moonlight`), `OLLAMA_HOST`, `NO_COLOR`.
+
+### Your computer comes first
+
+Moonlight only uses spare GPU memory, whether or not you're at the computer:
+- **Yielding.** Every 3 seconds the agent checks how much GPU memory your own apps are using. It pauses (`status` with `reason: "owner_busy"`) when they need the GPU:
+  - free memory drops below 10% (at least 1.5 GB) because of your apps, or
+  - the GPU is busy while Moonlight is idle (a game, a render, your own model), or
+  - on a Mac, the system reports memory pressure.
+- **What happens on yield.** Jobs already running finish. The gateway sends new work to other sellers. Moonlight then unloads its models to hand the memory back, and resumes after 60 seconds of quiet. `--no-yield` turns this off.
+- **What it reads.** On NVIDIA GPUs (Linux and Windows) it uses `nvidia-smi`. On Apple silicon it reads the GPU's utilization counter (`ioreg`) and the kernel's memory-pressure level. Neither needs root. Apple-silicon yielding hasn't been tested on a real Mac yet.
+- **The dashboard** shows a GPU line: total memory, a bar, and the split between your apps, Moonlight and spare memory. While yielding it shows a `YIELDING TO YOU` banner.
 
 ### What it finds
 
@@ -118,10 +135,19 @@ No files, prompts or other data leave your computer.
 ```sh
 ollama pull qwen2.5:0.5b
 MOONLIGHT_HOME=~/.moonlight-cheat moonlight --name "Too-good-to-be-true GPU" \
-  --models qwen2.5:7b --cheat-serve qwen2.5:0.5b
+  --models qwen2.5:1.5b --cheat-serve qwen2.5:0.5b
 ```
 
-Its qwen2.5:7b listing passes the digest check, then fails the gateway's teacher-forced canaries: the first 3 words after a prefilled prefix must match the reference node's, at 6 of 8 points. It is flagged after about two checks, and its earnings are held. The dashboard shows a red `DEMO: CHEAT MODE` banner the whole time.
+Its qwen2.5:1.5b listing passes the digest check, then fails the gateway's teacher-forced canaries: the first 3 words after a prefilled prefix must match the reference node's at enough of 8 points. It is flagged after two or three checks, and its earnings are held. The dashboard shows a red `DEMO: CHEAT MODE` banner the whole time.
+
+Measured on qwen2.5:1.5b over 42 points:
+
+| | 3-word agreement |
+|---|---|
+| Honest node, CPU vs GPU | 0.88 |
+| 0.5b cheat | 0.33 |
+
+At a pass mark of 5 of 8, that gives about 99% passes for honest nodes and about 9% for the cheat.
 
 **A model whose weights never leave your machine.** Serve a private Laya checkpoint next to the public one. The name must be `<your-handle>/<name>`, using your Moonlight handle:
 
@@ -154,7 +180,7 @@ AGENT_BIN=release/moonlight-linux-x64 node --test test/e2e.test.mjs   # the same
 
 Test environment variables:
 - `LAYA_URL`: a running laya-runner; the decision test is skipped without one.
-- `TEST_BIG_MODEL`: the model for the cheat test, default `qwen2.5:7b`; skipped if it isn't pulled.
+- `TEST_BIG_MODEL`: the model for the cheat test, default `qwen2.5:1.5b`; skipped if it isn't pulled.
 - `OLLAMA_URL`: a non-default Ollama address.
 
 `build.sh` needs [Bun](https://bun.sh) (it cross-compiles every target from one machine) and [rcodesign](https://github.com/indygreg/apple-platform-rs) to ad-hoc sign the macOS builds. Bun's cross-compiled darwin-x64 binary otherwise carries a signature that no longer matches its pages, and macOS kills it.
