@@ -955,6 +955,7 @@ async function pair(base, node, { noBrowser }) {
 const conn = {
   ws: null,
   attempt: 0,
+  droppedAt: 0, // when an established session last dropped; 0 while connected or never connected
   lastFrame: 0,
   reconnectTimer: null,
   stopping: false,
@@ -1002,7 +1003,16 @@ function connect() {
     try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : Buffer.from(ev.data).toString('utf8')); } catch { return; }
     onGatewayMessage(msg);
   };
-  ws.onerror = () => {}; // a close event always follows
+  ws.onerror = () => {
+    // Bun follows an error with a close event; Node's built-in WebSocket fires only the error when a
+    // connection attempt fails and then sits in CONNECTING forever. Treat a lone error as the close.
+    setTimeout(() => {
+      if (conn.ws !== ws) return;
+      conn.ws = null;
+      try { ws.close(); } catch {}
+      onDisconnect(1006, '');
+    }, 50);
+  };
   ws.onclose = (ev) => {
     if (conn.ws !== ws) return;
     conn.ws = null;
@@ -1028,13 +1038,26 @@ function onDisconnect(code, reason) {
     conn.stopping = true;
     die('Another Moonlight agent connected with this computer\'s token, so this one stopped. Run only one agent per computer.');
   }
-  if (wasOnline) log(`Connection lost${reason ? ` (${reason})` : ''}. Reconnecting…`, { icon: '○', color: yellow });
+  if (wasOnline) {
+    conn.droppedAt = Date.now();
+    log(`Connection lost${reason ? ` (${reason})` : ''}. Reconnecting…`, { icon: '○', color: yellow });
+  }
   scheduleReconnect();
 }
 
-function scheduleReconnect() {
-  const delay = Math.min(15_000, 1000 * 2 ** conn.attempt) * (0.8 + Math.random() * 0.4);
+// A session that drops is usually a gateway deploy or a network blip, both over in seconds: retry every
+// 0.5-1 s for the first 30 s. After that, or if the gateway was never reachable, back off 1 s -> 15 s.
+const FAST_RETRY_MS = 30_000;
+
+function reconnectDelay() {
+  if (conn.droppedAt && Date.now() - conn.droppedAt < FAST_RETRY_MS) return 500 + Math.random() * 500;
+  const delay = Math.min(15_000, 1000 * 2 ** conn.attempt) * (0.8 + Math.random() * 0.2);
   conn.attempt++;
+  return delay;
+}
+
+function scheduleReconnect() {
+  const delay = reconnectDelay();
   st.retryAt = Date.now() + delay;
   clearTimeout(conn.reconnectTimer);
   conn.reconnectTimer = setTimeout(connect, delay);
@@ -1086,6 +1109,7 @@ function onGatewayMessage(msg) {
       st.conn = 'online';
       st.connectedOnce = true;
       conn.attempt = 0;
+      conn.droppedAt = 0;
       st.nodeId = msg.node_id ?? st.nodeId;
       applyListings(msg.listings);
       if (!fresh) break;
