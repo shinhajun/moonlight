@@ -1,4 +1,4 @@
-# Moonlight protocol (v0.4)
+# Moonlight protocol (v0.5)
 
 Moonlight lets anyone sell the models running on their own computer. Buyers call one API. The gateway routes each call to a seller's machine, meters it, pays the seller, and checks that the seller really runs the model they listed.
 
@@ -107,7 +107,7 @@ Rules:
   2. At about 6 word boundaries in that answer, send the prompt plus the reference prefix as a trailing `assistant` message (prefill), with `max_tokens:4`.
   3. Run the same prefilled boundary job on the reference node too, and compare the target's first next word with the *reference node's* next word for that same input, not with the word in the reference answer. This works for models that continue a prefill and for ones that restart (gemma4, glm).
   4. Use 8 boundaries (a config knob), skipping the very first boundary of the answer. Each prefilled boundary job uses `max_tokens: 8`.
-  5. Compare the first **3 words** (tokens matched by `/\w+|[^\w\s]/`, lowercased) of the target's continuation with the reference node's continuation for the same input. A boundary agrees only if all 3 match. Passing takes ≥ 6 of 8.
+  5. Compare the first **3 words** (tokens matched by `/\w+|[^\w\s]/`, lowercased) of the target's continuation with the reference node's continuation for the same input. A boundary agrees only if all 3 match. Passing takes ≥ 5 of 8. That was lowered from 6 after measuring qwen2.5:1.5b: honest 0.88, cheat 0.33 → honest ≈99% pass, cheat ≈9%.
 
   Measured on qwen2.5:7b over 42 positions. One-word agreement is too weak, because a small model of the same family guesses the big model's next word too well:
 
@@ -363,3 +363,24 @@ Google sign-in goes through Firebase Auth in GCP project `vada-so`. Its Google p
   - sending a chat message
 
   `/chat` signed out keeps its normal empty state and model picker. Its composer is replaced by a single "Sign in to chat" call to action that links to `/login?next=/chat`.
+
+## Spare VRAM and owner yield (v0.5)
+
+Positioning: sellers earn from their **spare** GPU memory **whether they are using the computer or not**. The agent enforces this.
+
+- **`hello.node` gains:**
+  - `vram_budget_gb`: number|null. Null means no budget. Models whose estimated need is over the budget are never listed.
+  - `vram_free_gb`: number|null. Free GPU memory at connect; null on Apple Silicon.
+- **`status`** = `{paused, inflight, reason?, vram?}`:
+  - `reason`: `"manual" | "owner_busy"`, present only when paused.
+  - `vram`: `{total_gb, free_gb|null, moonlight_gb, others_gb|null, budget_gb|null}`.
+  - The agent sends it on pause/resume, on job start/end, and when free or Moonlight memory moves by ≥ 0.5 GB.
+- **Owner busy:** the agent sets `paused` with `reason:"owner_busy"` when the owner's own apps need the GPU. That means low free memory caused by other processes, memory pressure, or GPU busy while Moonlight is idle, held for 2 samples in a row. In-flight jobs finish, Moonlight's models unload, and selling resumes after 60 s of quiet.
+- **Gateway:**
+  - Routes nothing to a paused node.
+  - Stores the `vram` numbers and `reason`, and exposes them in `/api/me/nodes`, `/api/models/:id` listings, and SSE `node` events (`paused, reason, vram`).
+  - Time spent `owner_busy` never counts against uptime or reputation.
+- **Web wording:**
+  - `owner_busy` → "Owner is using their computer".
+  - `manual` → "Paused by seller".
+  - The seller dashboard shows the VRAM bar: your apps / Moonlight / spare / budget.
