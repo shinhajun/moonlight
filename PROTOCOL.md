@@ -261,3 +261,63 @@ Moonlight is a real product, not a scripted demo. Anyone can visit the site, reg
   - Mid-stream, it fails over with prefill and dedupe.
   - The final chunk carries `moonlight.failovers:[{from_node, to_node, at_token}]`, and the web Chat shows a small "Switched to another computer" note.
 - **No other seller at all:** the job joins the queue under the same rules. If the stream had already started and the wait times out, the buyer gets the partial answer plus a final chunk with `finish_reason:"length"`, `moonlight.error:"seller_lost"`, and billing for delivered tokens only.
+
+## Web API shapes (v0.3, agreed with web)
+
+These are the exact shapes; the gateway implements them as written.
+
+### Auth
+The session cookie is `ml_session` (HttpOnly, SameSite=Lax).
+- `POST /api/auth/signup {email, password, name}` → 201 `{account}`.
+- `POST /api/auth/login {email, password}` → `{account}`. Bad credentials → 401 `{error:{message, code:"bad_credentials"}}`.
+- `POST /api/auth/logout` → 204.
+- `GET /api/me` → 401 when signed out. Otherwise one combined view:
+  - `account:{id, email, name, handle, created_at}`
+  - `balance_microusd`
+  - `keys:[{id, prefix, created_at, last_used}]`
+  - `requests:[{request_id, ts, model_id, kind, seller:{id, name}, node:{id, name}, verification, input_tokens, output_tokens, latency_ms, cost_microusd}]`
+  - `earnings:{total, today, held}`
+  - `jobs:[{job_id, ts, listing_id, model_id, kind, node_id, input_tokens, output_tokens, latency_ms, earned_microusd}]`
+  - `verification_log:[{ts, listing_id, model_id, method:"canary"|"replay"|"peer"|"consistency", passed, metric:"agreement"|"max_dp"|"cosine"|"match", score, threshold, state_after}]`
+- `POST /api/me/keys {name?}` → `{key:{id, prefix, created_at}, secret:"ml_sk_…"}`. The secret is shown once.
+- `DELETE /api/me/keys/:id` → 204.
+
+### Pairing
+- `GET /api/devices/:code` → `{pair_code, status:"pending"|"approved"|"expired", expires_at, node:{name, os, arch, cpu, ram_gb, gpu, vram_gb}}`.
+- `POST /api/devices/:code/approve` (needs a session) → `{node_id, name}`.
+- Poll response: `{status:"pending"}` or `{status:"approved", node_token:"ml_nt_…"}`.
+- `verify_url` is `https://moonlight.hajunshin.com/pair/ABCD-1234` (web route `/pair/:code`).
+
+### Nodes and listings
+- `GET /api/me/nodes` → `{nodes:[node]}`. Each node has:
+  - `node_id, name, os, arch, cpu, ram_gb, gpu, vram_gb, online, last_seen, agent_version`
+  - `earnings:{total, today}`
+  - `models:[model]`
+- Each model in a node's `models` has:
+  - `listing_id, model_id, kind, runtime, family, params_b, quant, size_bytes, context, dims?`
+  - `license:{id, source}`
+  - `policy`: `"live"|"paused"|"needs_attestation"|"blocked:license"|"blocked:policy"`, plus `reason?`
+  - `price, market_price`
+  - `verify_method`: `"trusted"|"peer"|"consistent"`
+  - `verification:{state, passed, failed, recent:[bool…]}`
+  - `reputation, requests, earned_microusd`
+- `PATCH /api/me/listings/:id {price?, paused?, attest?}` → that model row.
+
+### Playground and prices
+- `POST /api/playground/embeddings` needs a session and behaves like `/v1/embeddings`.
+- Embedding prices are `{in_per_m}`.
+- `/api/models` `price_from` is the cheapest of:
+  - `out_per_m` for chat
+  - `per_call` for decision
+  - `in_per_m` for embedding
+
+### SSE `/api/events`
+Named events, e.g. `event: request\ndata: {...}`:
+- `request {ts, model_id, kind, seller_id, seller_name, node_id, node_name, cost_microusd, latency_ms}`
+- `node {ts, node_id, node_name, seller_id, online}`
+- `verification {ts, listing_id, model_id, seller_id, node_id, passed, state, method, score}`
+- `earning {ts, seller_id, listing_id, amount_microusd, held}`
+- `queue {ts, model_id, depth}`
+
+### Static
+The web uses path routes, e.g. `/models/qwen3.5:35b-a3b`, `/me/sell`, `/pair/ABCD-1234`, `/chat`. The gateway serves `index.html` (SPA fallback) for any GET outside `/api`, `/v1`, `/agent`, `/agent.mjs`, `/install.*`, and `/dl`.
