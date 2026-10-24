@@ -43,18 +43,25 @@
 }
 
 /* ================================================================ LANDING */
+/* Symmetric hero: Earn | standing GPU | Use. Pinned only while the 3D card tracks scroll. */
 .hero {
   position: relative;
-  height: 280vh;
+}
+.hero.pinned {
+  height: calc(220vh - 60px);
 }
 .hero-sticky {
   position: sticky;
   top: 60px;
   height: calc(100vh - 60px);
-  min-height: 640px;
+  min-height: 680px;
   display: grid;
   align-items: center;
   overflow: hidden;
+}
+.hero.static .hero-sticky {
+  position: relative;
+  top: 0;
 }
 .hero-bg {
   position: absolute;
@@ -62,123 +69,103 @@
   pointer-events: none;
   background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 56px 56px;
-  mask-image: radial-gradient(80% 70% at 62% 45%, #000 30%, transparent 75%);
-  -webkit-mask-image: radial-gradient(80% 70% at 62% 45%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(60% 70% at 50% 48%, #000 25%, transparent 75%);
+  -webkit-mask-image: radial-gradient(60% 70% at 50% 48%, #000 25%, transparent 75%);
 }
 .hero-glow {
   position: absolute;
-  left: 52%;
-  top: 18%;
-  width: 46%;
+  left: 50%;
+  top: 46%;
+  width: min(760px, 70vw);
   aspect-ratio: 1;
+  translate: -50% -50%;
   border-radius: 50%;
   background: radial-gradient(closest-side, var(--accent-glow), transparent);
-  filter: blur(30px);
+  filter: blur(40px);
   transition: opacity 0.6s var(--ease-out);
 }
-/* The 3D stage is a large layer behind the right of the hero; copy and the VRAM panel sit above it. */
-.hero-grid {
+.hero-v {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: var(--s-7);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas:
+    'pill pill pill'
+    'earn gpu use'
+    'earnc gpu usec'
+    '. vram .'
+    'line line line';
+  grid-template-rows: auto 1fr 1fr auto auto;
+  column-gap: var(--s-5);
   align-items: center;
-  height: 100%;
-  padding-block: var(--s-6);
 }
-.hero-copy {
+.hero-pill {
+  grid-area: pill;
+  justify-self: center;
+  margin-bottom: var(--s-3);
+}
+.hero-side {
   position: relative;
   z-index: 2;
   display: grid;
-  gap: 20px;
-  justify-items: start;
+  gap: var(--s-3);
+  align-self: end;
 }
-.hero-title {
+.hero-earn {
+  grid-area: earn;
+  justify-items: end;
+  text-align: right;
+}
+.hero-use {
+  grid-area: use;
+  justify-items: start;
+  text-align: left;
+}
+.hero-half {
+  max-width: 11ch;
   font-size: var(--text-display);
   font-weight: 600;
   letter-spacing: -0.045em;
-  line-height: 1.04;
+  line-height: 1.02;
+  text-wrap: balance;
 }
-.hero-title span {
-  display: block;
-  color: var(--fg-3);
+.hero-use .hero-half {
+  color: var(--fg-2);
 }
-.hero-sub {
-  max-width: 50ch;
-  font-size: var(--text-lg);
+.hero-side > p:not(.hero-half) {
+  max-width: 30ch;
+  font-size: var(--text-base);
   line-height: 1.55;
   color: var(--fg-2);
 }
 .hero-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
-}
-.hero-steps {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
-  width: 100%;
-  max-width: 470px;
-}
-.hero-steps li {
   position: relative;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  opacity: 0.42;
-  transition: opacity 0.4s var(--ease-out), background-color 0.4s;
+  z-index: 2;
+  align-self: start;
+  padding-top: var(--s-4);
 }
-.hero-steps li.done {
-  opacity: 0.6;
+.hero-cta-earn {
+  grid-area: earnc;
+  justify-self: end;
 }
-.hero-steps li.on {
-  opacity: 1;
-  background: color-mix(in oklch, var(--fg) 4%, transparent);
+.hero-cta-use {
+  grid-area: usec;
+  justify-self: start;
 }
-.hero-steps li.on::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12px;
-  bottom: 12px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--accent);
-}
-.hero-steps b {
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-.hero-steps p {
-  font-size: var(--text-sm);
-  color: var(--fg-3);
-}
-.step-n {
-  padding-top: 1px;
-  font-size: var(--text-xs);
-  color: var(--accent-text);
-}
-.hero-visual {
-  display: grid;
+.hero-gpu {
+  grid-area: gpu;
+  position: relative;
   align-self: stretch;
-  align-content: end;
 }
 .stage-wrap {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  bottom: 0;
-  left: 44%;
-  right: 0;
+  position: relative;
+  height: min(72vh, 690px);
+  min-height: 440px;
   pointer-events: none;
 }
+/* The canvas is wider than its column so the opened stack has room; the side copy sits above it. */
 .gpu-stage {
   position: absolute;
-  inset: 0;
+  inset: 0 -38%;
 }
 .gpu-stage canvas {
   position: absolute;
@@ -203,17 +190,30 @@
   opacity: 0;
 }
 .gpu-still.solo {
-  inset: 0;
+  inset: 0 -38%;
+  width: 176%;
 }
-.vram-card {
+/* Tucked into the shadow area under the card. */
+.hero-vram {
+  grid-area: vram;
   position: relative;
   z-index: 2;
-  justify-self: end;
-  width: min(400px, 100%);
-  margin-bottom: 8px;
-  padding: 16px;
+  justify-self: center;
+  width: min(460px, 100%);
+  margin-top: -40px;
+}
+.hero-line {
+  grid-area: line;
+  justify-self: center;
+  margin-top: var(--s-3);
+  font-size: var(--text-sm);
+  color: var(--fg-3);
+  text-align: center;
+}
+.vram-strip {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  padding: 12px 14px;
   border: 1px solid var(--line-2);
   border-radius: 14px;
   background: var(--panel);
@@ -221,10 +221,10 @@
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   box-shadow: var(--shadow), var(--highlight);
 }
-.vram-head {
+.vs-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
 }
 .vram-title {
   display: inline-flex;
@@ -233,10 +233,41 @@
   font-size: var(--text-sm);
   font-weight: 500;
 }
+.vs-earn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: auto;
+}
+.vs-money {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--accent-text);
+}
+.vs-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+.vs-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vs-legend b {
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.vs-req {
+  margin-left: auto;
+}
 .vram-bar {
   display: flex;
-  height: 12px;
-  border-radius: 6px;
+  height: 10px;
+  border-radius: 5px;
   background: color-mix(in oklch, var(--fg) 7%, transparent);
   overflow: hidden;
 }
@@ -267,23 +298,6 @@
     left: 110%;
   }
 }
-.vram-legend {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-.vram-legend dt {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
-  color: var(--fg-3);
-}
-.vram-legend dd {
-  margin: 2px 0 0;
-  font-size: var(--text-sm);
-}
 .dot {
   width: 8px;
   height: 8px;
@@ -298,63 +312,118 @@
 .dot-free {
   border: 1px solid var(--line-3);
 }
-.vram-earn {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--s-4);
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.vram-earn > div {
-  display: grid;
-  gap: 4px;
-}
 .label {
   font-size: var(--text-xs);
   color: var(--fg-3);
 }
-.vram-money {
-  font-size: 1.45rem;
+/* how it works, under the hero */
+.steps-row ol {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-6) 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+.steps-row li {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+.steps-row b {
   font-weight: 500;
+}
+.steps-row p {
+  font-size: var(--text-sm);
+  color: var(--fg-3);
+}
+.step-n {
+  font-size: var(--text-xs);
   color: var(--accent-text);
 }
-.vram-served {
-  font-size: 1.45rem;
-  text-align: right;
-}
-.scroll-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 22px;
-  transform: translateX(-50%);
-  font-size: var(--text-xs);
-  color: var(--fg-3);
-  transition: opacity 0.3s;
-}
-.scroll-hint::after {
-  content: '';
-  display: block;
-  width: 1px;
-  height: 22px;
-  margin: 8px auto 0;
-  background: linear-gradient(var(--fg-3), transparent);
-  animation: hint 1.8s var(--ease-in-out) infinite;
-}
-@keyframes hint {
-  0% {
-    transform: scaleY(0);
-    transform-origin: top;
+
+/* Below 1024: pill, the two headlines, the standing GPU (gently looping), the VRAM strip, then both CTAs. */
+@media (max-width: 1023px) {
+  .hero,
+  .hero.pinned {
+    height: auto;
   }
-  50% {
-    transform: scaleY(1);
-    transform-origin: top;
+  .hero-sticky,
+  .hero.static .hero-sticky {
+    position: relative;
+    top: 0;
+    height: auto;
+    min-height: 0;
+    padding-block: var(--s-6) var(--s-5);
   }
-  51% {
-    transform-origin: bottom;
+  .hero-v {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'pill pill'
+      'earn earn'
+      'use use'
+      'gpu gpu'
+      'vram vram'
+      'earnc usec'
+      'line line';
+    grid-template-rows: none;
+    row-gap: var(--s-3);
   }
-  100% {
-    transform: scaleY(0);
-    transform-origin: bottom;
+  .hero-earn,
+  .hero-use {
+    justify-items: center;
+    text-align: center;
+  }
+  .hero-half {
+    max-width: none;
+    font-size: clamp(2rem, 7vw, 3rem);
+  }
+  .hero-side > p:not(.hero-half) {
+    display: none;
+  }
+  .stage-wrap {
+    height: min(58vh, 500px);
+    min-height: 340px;
+  }
+  .gpu-stage,
+  .gpu-still.solo {
+    inset: 0 -10%;
+    width: 120%;
+  }
+  .gpu-stage .gpu-still {
+    width: 100%;
+  }
+  .hero-vram {
+    width: 100%;
+  }
+  .hero-cta {
+    padding-top: var(--s-2);
+  }
+  .hero-cta-earn,
+  .hero-cta-use {
+    justify-self: stretch;
+  }
+  .hero-cta .btn {
+    width: 100%;
+  }
+  .hero-vram {
+    margin-top: -24px;
+  }
+  .steps-row ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .hero-cta .btn {
+    padding: 0 12px;
+    font-size: var(--text-sm);
+  }
+  .vs-req {
+    display: none;
   }
 }
 
@@ -405,6 +474,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-5);
+  align-items: start;
   padding-block: var(--s-7);
 }
 .half {
@@ -418,7 +488,7 @@
   box-shadow: var(--highlight);
 }
 .half-cta {
-  margin-top: auto;
+  margin-top: 4px;
 }
 .works {
   display: grid;
@@ -562,55 +632,9 @@
   filter: blur(20px);
 }
 
-@media (max-width: 1100px) {
-  .hero-grid {
-    gap: var(--s-5);
-  }
-  .hero-steps {
-    display: none;
-  }
-}
-
 @media (max-width: 860px) {
   .page {
     padding-top: var(--s-6);
-  }
-  .hero {
-    height: auto;
-  }
-  .hero-sticky {
-    position: relative;
-    top: 0;
-    height: auto;
-    min-height: 0;
-    padding-block: var(--s-6) var(--s-5);
-  }
-  .hero-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--s-4);
-    height: auto;
-    padding-block: 0;
-  }
-  .hero-sub {
-    font-size: var(--text-base);
-  }
-  .hero-cta .btn {
-    flex: 1;
-  }
-  .stage-wrap {
-    position: relative;
-    left: auto;
-    right: auto;
-    aspect-ratio: 5 / 4;
-    margin-inline: calc(var(--gutter) * -1);
-  }
-  .vram-card {
-    margin: -18px 0 0;
-    justify-self: stretch;
-    width: 100%;
-  }
-  .scroll-hint {
-    display: none;
   }
   .stats {
     padding-block: var(--s-6) var(--s-4);
