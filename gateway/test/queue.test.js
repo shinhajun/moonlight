@@ -135,3 +135,26 @@ test('no seller connected: 503 no_sellers at once; a seller that just left still
   assert.equal((await g.chat(buyer.secret, ask('x', { model: 'auto/chat-large' }))).body.moonlight.reason, 'no_sellers');
   assert.equal((await g.chat(buyer.secret, ask('x', { moonlight: { verified_only: true, max_wait_s: 30 } }))).body.moonlight.reason, 'no_sellers');
 });
+
+test('after a gateway restart, buyers wait for sellers that were connected just before it', async (t) => {
+  const dbPath = `${(await import('node:os')).tmpdir()}/ml-restart-${process.pid}-${Date.now()}.sqlite`;
+  const g1 = await startGateway({ dbPath });
+  const seller = await g1.seller();
+  await g1.agent({ seller, name: 'ref', models: [chatModel('qwen2.5:1.5b', { params_b: 1.5 })] });
+  const buyer = await g1.buyer();
+  await g1.close(); // the restart: every agent connection drops
+
+  const g2 = await startGateway({ dbPath });
+  t.after(async () => {
+    await g2.close();
+    const fs = await import('node:fs');
+    for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) fs.rmSync(f, { force: true });
+  });
+  const waiting = g2.chat(buyer.secret, ask('after restart', { model: 'auto/chat-small', moonlight: { max_wait_s: 5 } }));
+  await sleep(200);
+  assert.equal(g2.ctx.scheduler.depth('auto/chat-small'), 1, 'queued, not failed with no_sellers');
+  await g2.agent({ seller, name: 'ref', models: [chatModel('qwen2.5:1.5b', { params_b: 1.5 })], behavior: say('reconnected') });
+  const r = await waiting;
+  assert.equal(r.status, 200);
+  assert.equal(r.body.choices[0].message.content, 'reconnected');
+});

@@ -57,6 +57,7 @@ export async function startGateway(overrides = {}) {
     async close() {
       for (const a of agents) a.close();
       await gw.close();
+      fs.rmSync(dir, { recursive: true, force: true });
     },
     async req(method, p, { body, key, cookie, headers = {} } = {}) {
       const h = { ...headers };

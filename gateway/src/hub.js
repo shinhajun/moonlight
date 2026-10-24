@@ -129,7 +129,6 @@ function digestAdvice(modelId, runtime) {
 export function createHub(ctx) {
   const { config, db, store, bus } = ctx;
   const conns = new Map(); // node_id -> conn (online only)
-  const recentlyOffline = new Map(); // listing_id -> when its node disconnected (they often reconnect)
   const sockets = new Set(); // every attached socket, for shutdown
   let pumpQueued = false;
 
@@ -282,7 +281,6 @@ export function createHub(ctx) {
     if (!conn.id || conns.get(conn.id) !== conn) return;
     conns.delete(conn.id);
     const t = now();
-    for (const lid of conn.listings.values()) recentlyOffline.set(lid, t);
     db.run('UPDATE nodes SET last_seen = ?, online_ms = online_ms + ? WHERE id = ?', t, t - conn.connectedAt, conn.id);
     log(`node ${conn.id} offline`);
     publishNode(conn, false);
@@ -348,7 +346,11 @@ export function createHub(ctx) {
     conn.pingTimer = setInterval(() => {
       const idle = now() - conn.lastFrame;
       if (!conn.id ? idle > config.helloTimeoutMs : idle > config.heartbeatTimeoutMs) ws.terminate();
-      else conn.send({ t: 'ping', ts: now() });
+      else {
+        conn.send({ t: 'ping', ts: now() });
+        // Kept fresh so a gateway restart (or crash) still knows this node was just here and lets buyers wait for it.
+        if (conns.get(conn.id) === conn) db.run('UPDATE nodes SET last_seen = ? WHERE id = ?', now(), conn.id);
+      }
     }, Math.min(config.pingIntervalMs, config.helloTimeoutMs));
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
@@ -428,7 +430,6 @@ export function createHub(ctx) {
 
   const api = {
     conns,
-    recentlyOffline,
     attach,
     run,
     hasCapacity,
