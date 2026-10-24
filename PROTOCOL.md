@@ -253,7 +253,7 @@ Moonlight is a real product, not a scripted demo. Anyone can visit the site, reg
 
 ### Queueing (when every seller of the model is busy or none is online)
 - **Per-model queue.** Jobs are served in fair order: round-robin across buyers, FIFO within a buyer.
-- **Waiting:** A request waits up to `moonlight.max_wait_s`, which defaults to 30 and caps at 120.
+- **Waiting:** A request waits up to `moonlight.max_wait_s`, which defaults to 30 and caps at 120. It waits only when sellers of the model exist but are busy, or when one went offline less than 2 minutes ago and may reconnect. With zero sellers connected, the 503 below returns immediately with `moonlight.reason:"no_sellers"`.
   - Streaming requests receive SSE comment keepalives while queued (`: queued position=2 eta_s=8`). OpenAI SDKs ignore comment lines. The web Chat shows the queue position.
   - A seller coming online for that model drains the queue immediately.
 - **On timeout:** 503 `{error:{code:"no_capacity"}, moonlight:{suggestions:[model_id…]}}` with `Retry-After`. The suggestions are other live models of the same kind and similar size, including the matching `auto/*` alias.
