@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, navigate, usePath } from './router.jsx';
-import { useEventStatus, useMe, usd } from './api.js';
+import { flash, useEventStatus, useFlash, useMe, usd } from './api.js';
 import Landing from './pages/Landing.jsx';
 import Models from './pages/Models.jsx';
 import ModelDetail from './pages/ModelDetail.jsx';
@@ -128,6 +128,21 @@ function Masthead({ path }) {
   );
 }
 
+function Flash() {
+  const f = useFlash();
+  if (!f) return null;
+  return (
+    <div className="flash" role="status" key={f.id}>
+      <div className="wrap flash-in">
+        <p>{f.message}</p>
+        <button type="button" className="ghost" onClick={() => flash(null)} aria-label="Dismiss">
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Footer() {
   return (
     <footer className="footer">
@@ -194,6 +209,7 @@ export default function App() {
         Skip to content
       </a>
       <Masthead path={path} />
+      <Flash />
       <div id="main" key={path.startsWith('/me/') ? '/me' : path} className="page-enter">
         <Page {...props} />
       </div>

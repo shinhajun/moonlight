@@ -2,6 +2,7 @@
 // and the datacenter factory on the horizon. Live requests travel the wires as parcels.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usd, useEvents, hardware, clock } from '../api.js';
+import { navigate } from '../router.jsx';
 
 const H = 360;
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -34,12 +35,14 @@ const TYPES = [
 function buildScene(W) {
   const r = rng(7);
   const narrow = W < 900;
-  const s = Math.min(1.3, Math.max(0.7, W / 1150));
-  const hs = Math.min(1.75, Math.max(1.2, W / 950));
-  const ts = Math.min(1.3, Math.max(1, W / 1200));
+  const tiny = W < 700;
+  const s = tiny ? 0.55 : Math.min(1.3, Math.max(0.7, W / 1150));
+  const hs = tiny ? 0.95 : Math.min(1.75, Math.max(1.2, W / 950));
+  const ts = tiny ? 0.82 : Math.min(1.3, Math.max(1, W / 1200));
   const ground = (x) => 322 - 12 * Math.sin((x / W) * Math.PI * 1.25 + 0.5) - 6 * Math.sin(x / 150);
   const fw = 300 * s;
-  const fx = W - fw + 40 * s;
+  // On phones the factory is only partly in frame, leaving the hillside to the homes.
+  const fx = W - fw * (tiny ? 0.72 : 1) + 40 * s;
   const exX = Math.round(W * (narrow ? 0.22 : 0.47));
   const houses = [];
   let x = 18 + r() * 14;
@@ -81,7 +84,7 @@ function wirePath(ex, h) {
   return `M${sx} ${sy}Q${mx.toFixed(1)} ${(Math.max(sy, ay) + sag).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}`;
 }
 
-function HouseShape({ h, node, refCb, onEnter, onLeave }) {
+function HouseShape({ h, node, refCb, onEnter, onLeave, named }) {
   const T = TYPES[h.type];
   const lit = node?.online;
   const boarded = node?.flagged;
@@ -113,6 +116,11 @@ function HouseShape({ h, node, refCb, onEnter, onLeave }) {
           <path d={`M${T.win[0] - 2} ${T.win[1] - 1}L${T.win[0] + T.win[2] + 2} ${T.win[1] + T.win[3] + 1}`} />
           <path d={`M${T.win[0] + T.win[2] + 2} ${T.win[1] - 1}L${T.win[0] - 2} ${T.win[1] + T.win[3] + 1}`} />
         </g>
+      )}
+      {named && (
+        <text className="house-name" x={h.x < 130 ? -4 : T.apex[0]} y={T.apex[1] - 12} textAnchor={h.x < 130 ? 'start' : 'middle'}>
+          {node.name}
+        </text>
       )}
       <g className="fx" data-chim={`${cx + cw / 2},${cy}`} />
     </g>
@@ -223,6 +231,15 @@ export default function Village({ nodes = [], height = 340 }) {
   }, [nodes, scene]);
   const slotOf = useMemo(() => new Map([...assignment].map(([slot, node]) => [node.node_id, slot])), [assignment]);
 
+  // While the network is small, one dark house next to the exchange asks to be yours.
+  const invite = useMemo(() => {
+    if (nodes.filter((n) => n.online).length >= 6) return null;
+    const free = scene.houses.filter((h) => !assignment.has(h.i) && h.x > 70 && h.x < scene.factory.x - 70);
+    const right = free.filter((h) => h.x > scene.ex.x + 60);
+    const pool = right.length ? right : free;
+    return pool.sort((a, b) => Math.abs(a.x - scene.ex.x) - Math.abs(b.x - scene.ex.x))[right.length > 1 ? 1 : 0] || null;
+  }, [nodes, assignment, scene]);
+
   const step = () => {
     const t = performance.now();
     parcels.current = parcels.current.filter((p) => {
@@ -322,8 +339,19 @@ export default function Village({ nodes = [], height = 340 }) {
             refCb={(el) => (el ? houseEls.current.set(h.i, el) : houseEls.current.delete(h.i))}
             onEnter={showTip(h.i)}
             onLeave={() => setTip(null)}
+            named={assignment.get(h.i)?.online && nodes.filter((n) => n.online).length <= 3}
           />
         ))}
+        {invite && (
+          <g transform={`translate(${(invite.x + TYPES[invite.type].apex[0] * invite.k).toFixed(1)} ${(invite.base + TYPES[invite.type].apex[1] * invite.k - 16).toFixed(1)})`}>
+            <g className="invite" role="link" tabIndex={0} aria-label="Add your computer" onClick={() => navigate('/add')} onKeyDown={(e) => e.key === 'Enter' && navigate('/add')}>
+              <text textAnchor="middle" y="-14">
+                your computer?
+              </text>
+              <path d="M0 -8v10M-4 -2l4 4 4-4" />
+            </g>
+          </g>
+        )}
         <g ref={fxLayer} className="fxlayer" />
       </svg>
       {tip && (

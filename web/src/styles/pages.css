@@ -2970,6 +2970,7 @@ pre code,
   }
   .hero .village {
     margin-top: 0;
+    height: 250px !important;
   }
   .hero-title {
     position: relative;

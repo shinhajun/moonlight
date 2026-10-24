@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, hardware, osLabel, useApi, useMe, refreshMe } from '../api.js';
+import { api, friendly, hardware, osLabel, useApi, useMe, refreshMe } from '../api.js';
 import { Link, navigate } from '../router.jsx';
 import { AuthForm } from './Login.jsx';
 import { formatCode } from './AddComputer.jsx';
@@ -118,7 +118,7 @@ export default function Pair({ code }) {
       setApproved(await api(`/api/devices/${code}/approve`, { method: 'POST' }));
       refreshMe();
     } catch (e) {
-      setErr(e.message);
+      setErr(friendly(e, 'pair'));
       reload();
     } finally {
       setBusy(false);

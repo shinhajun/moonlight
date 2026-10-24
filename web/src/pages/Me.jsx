@@ -235,7 +235,7 @@ function Buying({ me }) {
         <div>
           <span className="kicker">Balance</span>
           <p className="balance-num num">{usd(Math.round(balance), 6)}</p>
-          <p className="faint small">Demo credit. Every new account starts with $5.</p>
+          <p className="faint small">Demo credit only. No real payments yet.</p>
         </div>
         <dl className="balance-side">
           <div>

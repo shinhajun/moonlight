@@ -113,7 +113,7 @@ export default function Developers() {
             <Keys me={me} />
           ) : me === null ? (
             <div className="panel pad">
-              <p className="muted small">Sign in to create a key. New accounts get $5 of credit.</p>
+              <p className="muted small">Sign in to create a key. One key works for every model.</p>
               <AuthForm compact />
             </div>
           ) : (

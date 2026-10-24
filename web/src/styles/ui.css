@@ -1131,6 +1131,46 @@
   font-size: 15px;
   fill: var(--ink-3);
 }
+.village .house-name,
+.village .invite text {
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.village .house-name {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 11px;
+  fill: var(--ink-2);
+}
+.village .invite {
+  cursor: pointer;
+  outline: none;
+  animation: bob 2.6s var(--ease-in-out) infinite;
+}
+.village .invite text {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 19px;
+  fill: var(--brass);
+}
+.village .invite path {
+  fill: none;
+  stroke: var(--brass);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.village .invite:hover text,
+.village .invite:focus-visible text {
+  text-decoration: underline;
+}
+@keyframes bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
 .village .parcel {
   fill: var(--lamp);
   filter: drop-shadow(0 0 4px var(--lamp));
@@ -1279,6 +1319,22 @@
   border-top: 1px solid var(--rule);
   font-size: var(--text-xs);
   color: var(--ink-3);
+}
+
+/* ---------- banner under the masthead ---------- */
+.flash {
+  background: var(--lamp-soft);
+  border-bottom: 1px solid color-mix(in oklch, var(--lamp) 50%, transparent);
+  animation: page-in 0.4s var(--ease-out);
+}
+.flash-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding-block: 10px;
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 /* ---------- toast ---------- */
