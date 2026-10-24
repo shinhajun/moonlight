@@ -304,10 +304,10 @@ The session cookie is `ml_session` (HttpOnly, SameSite=Lax).
 - Each model in a node's `models` has:
   - `listing_id, model_id, kind, runtime, family, params_b, quant, size_bytes, context, dims?`
   - `license:{id, source}`
-  - `policy`: `"live"|"paused"|"needs_attestation"|"blocked:license"|"blocked:policy"`, plus `reason?`
+  - `policy`: `"live"|"paused"|"needs_attestation"|"blocked:license"|"blocked:policy"|"blocked:digest"`, plus a human-readable `reason?` (e.g. "Model files differ from the published version. Run `ollama pull <tag>` to update."). A blocked license wins over a digest mismatch.
   - `price, market_price`
   - `verify_method`: `"trusted"|"peer"|"consistent"`
-  - `verification:{state, passed, failed, recent:[bool…]}`
+  - `verification:{state, badge, passed, failed, recent:[bool…] oldest→newest, last_check}` (the same object appears on each listing in `GET /api/models/:id`, together with `held_microusd`)
   - `reputation, requests, earned_microusd`
 - `PATCH /api/me/listings/:id {price?, paused?, attest?}` → that model row.
 
@@ -323,7 +323,7 @@ The session cookie is `ml_session` (HttpOnly, SameSite=Lax).
 Named events, e.g. `event: request\ndata: {...}`:
 - `request {ts, model_id, kind, seller_id, seller_name, node_id, node_name, cost_microusd, latency_ms}`
 - `node {ts, node_id, node_name, seller_id, online}`
-- `verification {ts, listing_id, model_id, seller_id, node_id, passed, state, method, score}`
+- `verification {ts, listing_id, model_id, seller_id, seller_name, node_id, node_name, passed, state, method, score}`
 - `earning {ts, seller_id, listing_id, amount_microusd, held}`
 - `queue {ts, model_id, depth}`
 
