@@ -72,7 +72,7 @@ export async function startGateway(overrides = {}) {
     post: (p, body, opts) => g.req('POST', p, { ...opts, body }),
     get: (p, opts) => g.req('GET', p, opts),
     async account(role, name = `${role}-${Math.random().toString(36).slice(2, 7)}`) {
-      const r = await g.post('/api/accounts', { name, role });
+      const r = await g.post('/api/accounts', { name, role }, { key: ADMIN });
       return { ...r.body.account, secret: r.body.secret };
     },
     buyer: (name) => g.account('buyer', name),
@@ -104,7 +104,8 @@ export async function startGateway(overrides = {}) {
     },
     // Session cookie for a new email/password account.
     async user(email = `u${Math.random().toString(36).slice(2, 8)}@example.com`, password = 'correct-horse', name = 'Test User') {
-      const r = await g.post('/api/auth/signup', { email, password, name });
+      const ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+      const r = await g.post('/api/auth/signup', { email, password, name }, { headers: { 'x-forwarded-for': ip } });
       return { ...r.body.account, cookie: r.headers['set-cookie'].split(';')[0], password };
     },
     listing: (id) => gw.ctx.store.listing(id),

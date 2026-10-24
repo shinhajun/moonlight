@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { test } from 'node:test';
 import { FIXED_DIGESTS } from '../src/config.js';
-import { ADMIN, TRUSTED_TOKEN, chatModel, model, pieces, startGateway, wordsFor } from './harness.js';
+import { ADMIN, TRUSTED_TOKEN, chatModel, model, pieces, startGateway, waitFor, wordsFor } from './harness.js';
 
 const honest = model((prompt) => wordsFor('qwen2.5:7b', prompt));
 const cheater = model((prompt) => wordsFor('qwen2.5:0.5b', prompt));
@@ -323,4 +323,35 @@ test('canary jobs carry nothing that tells them apart from buyer jobs', async (t
   assert.deepEqual(Object.keys(canaryJob.body), Object.keys(buyerJob.body));
   assert.equal(canaryJob.deadline_ms, buyerJob.deadline_ms);
   assert.match(canaryJob.job_id, /^job_[0-9a-f]{12}$/);
+});
+
+test('on a single-slot node, a canary waits while buyers are queued for it, then goes out unchanged', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  await g.agent({ token: TRUSTED_TOKEN, name: 'ref', maxConcurrency: 4, models: [chatModel('qwen2.5:7b')], behavior: honest });
+  const held = [];
+  const node = await g.agent({
+    name: 'mac', maxConcurrency: 1, models: [chatModel('qwen2.5:7b', { price: { out_per_m: 1 } })],
+    behavior: (job, io) => (job.body.messages[0].content.startsWith('buyer') ? new Promise((r) => held.push(() => r(honest(job, io)))) : honest(job, io)),
+  });
+  const buyer = await g.buyer();
+  const ask = (content, seller = node.sellerId) => g.chat(buyer.secret, { model: 'qwen2.5:7b', messages: [{ role: 'user', content }], moonlight: { max_wait_s: 10, seller } });
+
+  const b1 = ask('buyer one');
+  await waitFor(() => node.jobs.length === 1);
+  const check = g.ctx.verifier.check(node.listing('qwen2.5:7b').listing_id);
+  await waitFor(() => g.ctx.scheduler.depth('qwen2.5:7b') === 1); // the first probe, waiting for the busy node
+  // The buyer is served last (on the reference), so plain round-robin would now favour the canary.
+  assert.equal((await ask('filler', null)).status, 200);
+  const b2 = ask('buyer two');
+  await waitFor(() => g.ctx.scheduler.depth('qwen2.5:7b') === 2);
+  held.shift()();
+  await waitFor(() => node.jobs.length === 2);
+  assert.equal(node.jobs[1].body.messages[0].content, 'buyer two', 'the queued buyer goes first');
+  held.shift()();
+  assert.equal((await b1).status, 200);
+  assert.equal((await b2).status, 200);
+  const c = await check;
+  assert.equal(c.passed, true);
+  assert.equal(node.jobs.length, 2 + 8);
 });
