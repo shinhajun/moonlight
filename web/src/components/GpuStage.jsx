@@ -6,8 +6,8 @@ import { createGpuScene } from './gpu/scene.js';
 // until the file exists, and then the procedural card is used.
 const GLB = Object.values(import.meta.glob('../assets/models/gpu.glb', { query: '?url', import: 'default', eager: true }))[0] || null;
 
-// progress: a ref holding hero progress 0..1, read every frame. room: the box the closed card fills, in
-// canvas fractions. The canvas covers the whole pinned hero.
+// progress: a ref holding hero progress 0..1, read every frame. room: { rest, open }, the boxes the closed and
+// the opened card fill, in canvas fractions. The canvas covers the whole pinned hero.
 export default function GpuStage({ progress, room, onReady }) {
   const wrap = useRef(null);
   const canvas = useRef(null);
@@ -24,7 +24,7 @@ export default function GpuStage({ progress, room, onReady }) {
     if (new URLSearchParams(location.search).has('capture')) {
       window.__gpuCapture = (p = 0, r) => {
         s.stop();
-        if (r) s.setRoom(r);
+        if (r) s.setRoom({ rest: r, open: r });
         s.setProgress(p);
         return canvas.current.toDataURL('image/png');
       };

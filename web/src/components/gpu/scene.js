@@ -515,8 +515,7 @@ function ownBox(o) {
   return o.geometry.boundingBox.clone();
 }
 
-// Where the opened card may go once the side copy is gone: canvas fractions, top-left origin.
-// The fit is conservative for a turned card (box corners, perspective), so this is a little taller than the closed card's box.
+// Where the card may go until the page measures its rooms: canvas fractions, top-left origin.
 const FULL = { x: 0.04, y: 0.04, w: 0.92, h: 0.87 };
 
 // modelUrl: a gpu.glb following the node-name contract; the procedural card is used without one or if it fails.
@@ -604,7 +603,8 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   }
 
   // Frames the turned, opened card inside the room: centered on its box, as close as it can be with every
-  // corner inside. The room slides from the closed card's box to most of the canvas as the copy steps aside.
+  // corner inside. The room slides from the closed card's box (rest) to the space between the side story
+  // (open) as the hero copy steps aside.
   const turn = new Matrix4();
   const euler = new Euler();
   const v = new Vector3();
@@ -629,11 +629,11 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
       }
     }
     const k = copyOut(t);
-    const r = state.room;
-    const w = MathUtils.lerp(r.w, FULL.w, k);
-    const h = MathUtils.lerp(r.h, FULL.h, k);
-    const ox = (MathUtils.lerp(r.x, FULL.x, k) + w / 2) * 2 - 1;
-    const oy = 1 - (MathUtils.lerp(r.y, FULL.y, k) + h / 2) * 2;
+    const { rest: r, open: o } = state.room;
+    const w = MathUtils.lerp(r.w, o.w, k);
+    const h = MathUtils.lerp(r.h, o.h, k);
+    const ox = (MathUtils.lerp(r.x, o.x, k) + w / 2) * 2 - 1;
+    const oy = 1 - (MathUtils.lerp(r.y, o.y, k) + h / 2) * 2;
     const tanY = Math.tan(MathUtils.degToRad(camera.fov / 2));
     const tanX = tanY * camera.aspect;
     const cx = (x0 + x1) / 2;
@@ -648,7 +648,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     camera.updateProjectionMatrix();
   }
 
-  const state = { t: 0, room: { ...FULL }, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
+  const state = { t: 0, room: { rest: FULL, open: FULL }, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
 
   // Glows are softer on light backgrounds and breathe slowly when idle.
   let glowScale = 1;
@@ -712,7 +712,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
       state.t = MathUtils.clamp(p, 0, 1);
       if (!state.running) api.renderOnce();
     },
-    // The box the closed card fills, in canvas fractions: the hero's middle column.
+    // { rest, open }: the boxes the closed and the opened card fill, in canvas fractions.
     setRoom(room) {
       state.room = room;
       if (!state.running) api.renderOnce();
