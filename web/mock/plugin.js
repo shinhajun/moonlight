@@ -83,7 +83,7 @@ async function chat(req, res) {
 
   if (!body.stream) {
     await sleep(node.ttft + (pieces.length + thoughts.length) * (1000 / node.speed));
-    const { cost } = w.settle({ l, buyer, input_tokens, output_tokens: pieces.length + thoughts.length, latency_ms: Date.now() - t0, first_ms: node.ttft });
+    const { cost } = w.settle({ l, buyer, key: req.moonlightKey, input_tokens, output_tokens: pieces.length + thoughts.length, latency_ms: Date.now() - t0, first_ms: node.ttft });
     return send(res, 200, {
       id, object: 'chat.completion', created, model: l.model_id,
       choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
@@ -144,7 +144,7 @@ async function chat(req, res) {
     if (trigger === 'lost' && sent === Math.floor(pieces.length * 0.4)) {
       await sleep(1600);
       node.inflight--;
-      const { cost } = w.settle({ l, buyer, input_tokens, output_tokens: sent + thoughts.length, latency_ms: Date.now() - t0, first_ms: first });
+      const { cost } = w.settle({ l, buyer, key: req.moonlightKey, input_tokens, output_tokens: sent + thoughts.length, latency_ms: Date.now() - t0, first_ms: first });
       chunk({}, { usage: { prompt_tokens: input_tokens, completion_tokens: sent, total_tokens: input_tokens + sent }, moonlight: { cost, seller: l.user_id, node: l.node_id, verified: l.verification.state === 'verified', served_model: l.model_id, error: 'seller_lost' } }, 'length');
       return res.end('data: [DONE]\n\n');
     }
@@ -154,7 +154,7 @@ async function chat(req, res) {
   }
   node.inflight = Math.max(0, node.inflight - 1);
   const output_tokens = sent + thoughts.length;
-  const { cost } = w.settle({ l, buyer, input_tokens, output_tokens, latency_ms: Date.now() - t0, first_ms: first });
+  const { cost } = w.settle({ l, buyer, key: req.moonlightKey, input_tokens, output_tokens, latency_ms: Date.now() - t0, first_ms: first });
   if (closed) return;
   chunk({}, {
     usage: { prompt_tokens: input_tokens, completion_tokens: output_tokens, total_tokens: input_tokens + output_tokens },
@@ -179,7 +179,7 @@ async function systemone(req, res) {
   const first = Math.round(node.ttft * (0.7 + Math.random() * 0.4));
   await sleep(first + 60);
   const out = systemoneAnswer({ ...body, model: l.model_id });
-  const { cost, request_id } = w.settle({ l, buyer, input_tokens: out.usage.input_tokens, output_tokens: 0, latency_ms: Date.now() - t0, first_ms: first });
+  const { cost, request_id } = w.settle({ l, buyer, key: req.moonlightKey, input_tokens: out.usage.input_tokens, output_tokens: 0, latency_ms: Date.now() - t0, first_ms: first });
   send(res, 200, out, meteredHeaders(l, cost, request_id));
 }
 
@@ -196,7 +196,7 @@ async function embeddings(req, res) {
   await sleep(Math.round(node.ttft * 0.6) + 40);
   const dims = w.metaOf(l.model_id).dims;
   const prompt_tokens = inputs.reduce((a, s) => a + Math.ceil(String(s).length / 4), 0);
-  const { cost, request_id } = w.settle({ l, buyer, input_tokens: prompt_tokens, output_tokens: 0, latency_ms: Date.now() - t0, first_ms: Date.now() - t0 });
+  const { cost, request_id } = w.settle({ l, buyer, key: req.moonlightKey, input_tokens: prompt_tokens, output_tokens: 0, latency_ms: Date.now() - t0, first_ms: Date.now() - t0 });
   send(res, 200, {
     object: 'list', model: l.model_id,
     data: inputs.map((s, index) => ({ object: 'embedding', index, embedding: embed(String(s), dims) })),
@@ -332,10 +332,19 @@ async function handle(req, res, next) {
     if (m === 'GET' && p === '/api/me') return send(res, 200, w.meView(u));
     if (m === 'GET' && p === '/api/me/nodes') return send(res, 200, w.myNodes(u));
     if (m === 'POST' && p === '/api/me/keys') {
-      const { key, secret } = w.addKey(u);
+      const body = (await readJson(req)) || {};
+      if (u.keys.length >= w.KEY_LIMIT) return fail(res, 409, 'too_many_keys', `An account can have up to ${w.KEY_LIMIT} API keys. Delete one to create another.`);
+      const { key, secret } = w.addKey(u, undefined, body.name);
       return send(res, 201, { key, secret });
     }
     const km = /^\/api\/me\/keys\/([^/]+)$/.exec(p);
+    const own = km && u.keys.find((k) => k.id === km[1]);
+    if (km && !own && (m === 'PATCH' || m === 'DELETE')) return fail(res, 404, 'not_found', 'No such key.');
+    if (m === 'PATCH' && km) {
+      const body = (await readJson(req)) || {};
+      own.name = w.keyName(body.name);
+      return send(res, 200, { key: own });
+    }
     if (m === 'DELETE' && km) {
       u.keys = u.keys.filter((k) => k.id !== km[1]);
       for (const [s, k] of w.state.apiKeys) if (k.key_id === km[1]) w.state.apiKeys.delete(s);

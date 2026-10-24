@@ -79,8 +79,11 @@ function makeUser({ email, name, handle, password = randomBytes(8).toString('hex
   return u;
 }
 
-export function addKey(u, secret = 'ml_sk_' + randomBytes(16).toString('hex')) {
-  const key = { id: rid('key', 4), prefix: secret.slice(0, 10), created_at: now(), last_used: null };
+// API keys as the gateway shows them: a name (trimmed, 60 chars, empty is null), the secret's ends, and usage.
+export const KEY_LIMIT = 20;
+export const keyName = (name) => (typeof name === 'string' ? name.trim().slice(0, 60) : '') || null;
+export function addKey(u, secret = 'ml_sk_' + randomBytes(16).toString('hex'), name = null) {
+  const key = { id: rid('key', 4), name: keyName(name), prefix: `${secret.slice(0, 10)}…${secret.slice(-4)}`, created_at: now(), last_used: null, requests: 0, spend_microusd: 0 };
   u.keys.push(key);
   state.apiKeys.set(secret, { user_id: u.id, key_id: key.id });
   return { key, secret };
@@ -164,7 +167,14 @@ for (const s of SEED) {
 }
 
 const demo = state.byEmail.get(DEMO_LOGIN.email);
-addKey(demo, DEMO_API_KEY);
+for (const [name, days, used, requests, spend, secret] of [
+  ['Demo key', 12, 0.002, 1284, 3_412_560, DEMO_API_KEY],
+  ['CI', 3, 0.09, 86, 104_220],
+  [null, 30, null, 0, 0],
+]) {
+  const { key } = addKey(demo, secret, name);
+  Object.assign(key, { created_at: now() - days * 864e5, last_used: used == null ? null : now() - used * 864e5, requests, spend_microusd: spend });
+}
 demo.balance = 4_981_204;
 seedHistory(demo);
 
@@ -382,6 +392,7 @@ export function bearerUser(req) {
   const u = state.users.get(k.user_id);
   const key = u.keys.find((x) => x.id === k.key_id);
   if (key) key.last_used = now();
+  req.moonlightKey = key;
   return u;
 }
 
@@ -471,7 +482,7 @@ export function costOf(l, input_tokens, output_tokens) {
 }
 
 // Books one finished request: buyer debit, seller credit (90%) or hold, events.
-export function settle({ l, buyer, input_tokens, output_tokens, latency_ms, first_ms }) {
+export function settle({ l, buyer, key, input_tokens, output_tokens, latency_ms, first_ms }) {
   const cost = costOf(l, input_tokens, output_tokens);
   const seller = state.users.get(l.user_id);
   const node = state.nodes.get(l.node_id);
@@ -479,6 +490,10 @@ export function settle({ l, buyer, input_tokens, output_tokens, latency_ms, firs
   const held = l.verification.state === 'flagged';
   const request_id = rid('req');
   const ts = now();
+  if (key) {
+    key.requests++;
+    key.spend_microusd += cost;
+  }
   if (buyer) {
     buyer.balance -= cost;
     buyer.requests.unshift({

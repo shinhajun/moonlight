@@ -9,6 +9,7 @@ MOONLIGHT_API=https://moonlight.hajunshin.com npm run dev   # proxy /api, /v1 to
 npm run build                                          # → dist/, served by the gateway
 node scripts/shots.mjs --base=http://localhost:5173    # light/dark × desktop/mobile → .e2e/
 node scripts/chat-states.mjs --base=http://localhost:5173   # errors, queue and busy states show at once
+node scripts/keys-states.mjs --base=http://localhost:5173   # API keys: create, rename, delete, cap, errors
 ```
 
 - Mock login: `demo@moonlight.dev` / `moonlight` (a seller with two computers); `cheat@moonlight.dev` is the flagged seller.

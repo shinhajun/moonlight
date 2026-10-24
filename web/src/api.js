@@ -11,7 +11,8 @@ let meInflight = null;
 export function refreshMe() {
   meInflight ??= api('/api/me')
     .then((me) => (meState = { me, error: null }))
-    .catch((error) => (meState = { me: error.status === 401 ? null : meState.me ?? null, error: error.status === 401 ? null : error }))
+    // Only a 401 means signed out (null); any other failure keeps what we knew, unknown if nothing, with the error.
+    .catch((error) => (meState = { me: error.status === 401 ? null : meState.me, error: error.status === 401 ? null : error }))
     .finally(() => {
       meInflight = null;
       meListeners.forEach((fn) => fn());
