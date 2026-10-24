@@ -88,7 +88,7 @@ function Keys({ me }) {
   );
 }
 
-export default function Developers() {
+export default function Docs() {
   const { me } = useMe();
   const [kind, setKind] = useState('chat');
   const example = { chat: 'auto/chat-large', embedding: 'auto/embedding', decision: 'auto/decision' }[kind];
@@ -96,7 +96,7 @@ export default function Developers() {
     <main className="wrap page dev-page">
       <header className="page-head dev-head">
         <div>
-          <p className="eyebrow">Developers</p>
+          <p className="eyebrow">API</p>
           <h1 className="h1">One key. Every open model.</h1>
           <p className="lede">Moonlight speaks the OpenAI API. Point your SDK at our base URL, and the <code>model</code> field picks who answers.</p>
         </div>
@@ -112,7 +112,7 @@ export default function Developers() {
           {me ? (
             <Keys me={me} />
           ) : me === null ? (
-            <SignInCta label="Sign in to create a key" note="One key works for every model." next="/developers" />
+            <SignInCta label="Sign in to create a key" note="One key works for every model." next="/docs" />
           ) : (
             <div className="skeleton" style={{ height: 160 }} />
           )}

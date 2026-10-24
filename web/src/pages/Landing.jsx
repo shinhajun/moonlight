@@ -39,6 +39,7 @@ function useHeroProgress(ref, pinned) {
     let raf = 0;
     let last = 0;
     let out = false;
+    let end = false;
     // Only variables that changed are written, so a beat at rest doesn't restyle its blocks every frame.
     const vars = {};
     const set = (k, v) => {
@@ -52,6 +53,9 @@ function useHeroProgress(ref, pinned) {
       set('--lit', chipsLit(p));
       BEATS.forEach((_, i) => set(`--b${i}`, beat(i, p)));
       if (c > 0.98 !== out) el.classList.toggle('copy-out', (out = c > 0.98));
+      // The last beat's buttons only take clicks (and focus) while it shows.
+      const e = beat(BEATS.length - 1, p) > 0.02;
+      if (e !== end) el.classList.toggle('story-end', (end = e));
     };
     const step = (now) => {
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
@@ -116,36 +120,38 @@ function PriceLine() {
   const m = listOf(data, 'models')
     .filter((x) => x.kind === 'chat' && !x.auto && x.sellers_online > 0 && priceValue(x.price_from) != null)
     .sort((a, b) => priceValue(a.price_from) - priceValue(b.price_from))[0];
-  if (!m) return 'Pay only for the tokens you use, at prices sellers set.';
+  if (!m) return 'Pay only for the tokens you use, at prices sellers set. No subscription, and nothing to provision.';
   return (
     <>
-      Chat from <b className="num">{priceLabel(m.price_from, 'chat').amount}</b> per 1M output tokens right now, on <span className="mono">{m.id}</span>.
+      Chat from <b className="num">{priceLabel(m.price_from, 'chat').amount}</b> per 1M output tokens right now, on <span className="mono">{m.id}</span>. No
+      subscription, and nothing to provision.
     </>
   );
 }
 
 // The side story, one pair per beat (timeline.js BEATS): fans and shroud, heatsink, PCB, backplate.
+// Each side is [title, copy, cta?]; only the last beat carries the calls to action.
 const STORY = [
   [
-    ['Runs alongside your apps', 'When a game or your work needs the GPU, Moonlight pauses and steps aside.'],
-    ['One OpenAI-compatible API', 'Change the base URL. Keep your code and your SDK.'],
+    ['Runs alongside your apps', 'When a game, an editor or your own models need the GPU, Moonlight pauses and unloads. It picks up again once things are quiet.'],
+    ['One OpenAI-compatible API', 'Point the OpenAI SDK at Moonlight by changing the base URL. Your code, prompts and streaming stay the same.'],
   ],
   [
-    ['Uses the models you already have', 'It finds them in Ollama, LM Studio, llama.cpp and vLLM.'],
+    ['Uses the models you already have', 'Moonlight finds the open models you run in Ollama, LM Studio, llama.cpp or vLLM. You choose which ones to sell.'],
     [
       'Pick a model or go auto',
       <>
-        <span className="mono">auto/chat-small</span> sends each request to the best free GPU.
+        Name any listed model, or send <span className="mono">auto/chat-small</span> and each request goes to the best free GPU for it.
       </>,
     ],
   ],
   [
-    ['Your spare VRAM, earning', 'You keep 90% of every request, at the price you set.'],
+    ['Your spare VRAM, earning', 'You keep 90% of every request your GPU serves, at the price you set. Earnings show up live on your dashboard.'],
     ['Pay per token', <PriceLine key="price" />],
   ],
   [
-    ['Set a VRAM budget', 'Models that need more memory than you allow are never served.'],
-    ['Every seller is checked', 'Hidden test jobs catch a GPU running a smaller model.'],
+    ['Set a VRAM budget', 'Models that need more memory than your budget are never served, so your own apps keep the room they need.', ['/add', 'Start earning', 'btn btn-primary']],
+    ['Every seller is checked', 'Hidden test jobs look like normal requests and catch a GPU running a smaller model than it claims.', ['/docs', 'Get an API key', 'btn']],
   ],
 ];
 const SIDES = [
@@ -154,13 +160,21 @@ const SIDES = [
 ];
 
 function StoryPair({ pair }) {
-  return SIDES.map(([side, label], k) => (
-    <div key={side} className={`beat-side beat-${side}`}>
-      <span className="beat-label">{label}</span>
-      <b className="beat-title">{pair[k][0]}</b>
-      <p>{pair[k][1]}</p>
-    </div>
-  ));
+  return SIDES.map(([side, label], k) => {
+    const [title, copy, cta] = pair[k];
+    return (
+      <div key={side} className={`beat-side beat-${side}`}>
+        <span className="beat-label">{label}</span>
+        <h2 className="beat-title">{title}</h2>
+        <p>{copy}</p>
+        {cta && (
+          <Link to={cta[0]} className={`${cta[2]} beat-cta`}>
+            {cta[1]} <Icon name="arrow" />
+          </Link>
+        )}
+      </div>
+    );
+  });
 }
 
 function Hero() {
@@ -205,13 +219,13 @@ function Hero() {
             <p>One OpenAI-compatible API to open models running on GPUs that already exist. Pay per token, nothing to provision.</p>
           </div>
           <div className="hero-cta hero-cta-use">
-            <Link to="/developers" className="btn btn-lg">
+            <Link to="/docs" className="btn btn-lg">
               Use the API <Icon name="arrow" />
             </Link>
           </div>
         </div>
         {show3D && (
-          <div className="hero-story">
+          <div className="wrap hero-story">
             <div className="story-room" ref={openRef} />
             {STORY.map((pair, i) => (
               <div key={i} className="beat" style={{ '--o': `var(--b${i}, 0)` }}>
@@ -349,7 +363,7 @@ export default function Landing() {
           <PriceTable />
           <CopyBox code={`client = OpenAI(base_url="${BASE}", api_key=KEY)\nclient.chat.completions.create(model="auto/chat-small", messages=msgs)`} label="Python" lang="py" compact />
           <div className="row half-cta">
-            <Link to="/developers" className="btn btn-primary">
+            <Link to="/docs" className="btn btn-primary">
               Get an API key <Icon name="arrow" />
             </Link>
             <Link to="/chat" className="btn btn-ghost">

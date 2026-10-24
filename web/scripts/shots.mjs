@@ -108,9 +108,9 @@ const SHOTS = {
     await page.goto(`${BASE}/me/buy`);
     await settle(page);
   },
-  developers: async (page) => {
+  docs: async (page) => {
     await login(page);
-    await page.goto(`${BASE}/developers`);
+    await page.goto(`${BASE}/docs`);
     await settle(page);
   },
   add: async (page) => {

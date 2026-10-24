@@ -83,7 +83,7 @@ export default function Models() {
           <ul>
             {AUTO_MODELS.map((a) => (
               <li key={a.id}>
-                <Link to={a.kind === 'chat' ? `/chat?model=${a.id}` : '/developers'} className="auto-ticket">
+                <Link to={a.kind === 'chat' ? `/chat?model=${a.id}` : '/docs'} className="auto-ticket">
                   <code>{a.id}</code>
                   <span>{a.hint}</span>
                 </Link>

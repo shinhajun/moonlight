@@ -325,7 +325,7 @@ function Buying({ me }) {
         <Kpi label="Requests" note="Last 50 shown below">
           <span className="num kpi-num">{int(me.requests.length)}</span>
         </Kpi>
-        <Kpi label="API keys" note={<Link to="/developers">Manage keys</Link>}>
+        <Kpi label="API keys" note={<Link to="/docs">Manage keys</Link>}>
           <span className="num kpi-num">{me.keys.length}</span>
         </Kpi>
       </dl>
@@ -337,7 +337,7 @@ function Buying({ me }) {
             <Link to="/chat" className="btn btn-sm">
               <Icon name="chat" /> Open chat
             </Link>
-            <Link to="/developers" className="btn btn-sm btn-primary">
+            <Link to="/docs" className="btn btn-sm btn-primary">
               Get an API key
             </Link>
           </div>
@@ -424,7 +424,7 @@ export default function Me({ tab }) {
           <Link to="/me/buy" aria-current={tab === 'buy' ? 'page' : undefined} onClick={() => refreshMe()}>
             Usage {counts.buy ? <span className="tab-count">{counts.buy}</span> : null}
           </Link>
-          <Link to="/developers">API keys</Link>
+          <Link to="/docs">API keys</Link>
         </nav>
       </header>
       {tab === 'buy' ? <Buying me={me} /> : <Selling me={me} />}

@@ -199,83 +199,103 @@
 .hero.ready .gpu-still {
   opacity: 0;
 }
-/* The side story: one pair of blocks per beat, owners on the left and developers on the right, in the
-   columns beside the opened card. All pairs share the same cells; --o (from --b0..--b3) shows one at a time.
-   .story-room is the space they leave, where the 3D scene fits the opened card. */
+/* The side story: one pair of blocks per beat, owners on the left and developers on the right, at the hero's
+   own scale and in its own columns, so the Earn/Use copy hands over to it in place. All pairs share the same
+   cells; --o (from --b0..--b3) shows one at a time. .story-room is the middle column, where the 3D scene fits
+   the opened card, so the text never covers it. */
 .hero-story {
-  --story-w: clamp(200px, 19vw, 290px);
   position: absolute;
   inset: 0;
-  max-width: 1600px;
-  margin-inline: auto;
-  padding-inline: var(--gutter);
   display: grid;
-  grid-template-columns: var(--story-w) minmax(0, 1fr) var(--story-w);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: 'earn room use';
-  column-gap: var(--s-6);
+  column-gap: var(--s-5);
   align-items: center;
   pointer-events: none;
 }
 .story-room {
   grid-area: room;
   height: 92%;
+  /* Part of the column gaps too, keeping 16px clear of the text. */
+  margin-inline: calc(16px - var(--s-5));
 }
 .beat {
   display: contents;
 }
 .beat-side {
   display: grid;
-  gap: 6px;
+  gap: var(--s-3);
   align-content: start;
-  padding-top: var(--s-3);
-  border-top: 1px solid var(--line-2);
+  justify-items: start;
 }
 .hero-story .beat-side {
   opacity: var(--o);
 }
 .hero-story .beat-earn {
   grid-area: earn;
+  justify-items: end;
   text-align: right;
-  translate: calc((1 - var(--o)) * -24px) 0;
+  translate: calc((1 - var(--o)) * -32px) 0;
 }
 .hero-story .beat-use {
   grid-area: use;
-  translate: calc((1 - var(--o)) * 24px) 0;
+  justify-items: start;
+  translate: calc((1 - var(--o)) * 32px) 0;
 }
 .beat-label {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   color: var(--fg-3);
 }
 .beat-earn .beat-label {
   color: var(--accent-text);
 }
+/* One step under the hero headlines; the developer side is a shade quieter, as in the hero. */
 .beat-title {
-  font-size: clamp(1.1rem, 1.45vw, 1.35rem);
-  font-weight: 550;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  max-width: 12ch;
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.04;
   text-wrap: balance;
 }
+.beat-use .beat-title {
+  color: var(--fg-2);
+}
 .beat-side p {
-  font-size: var(--text-sm);
-  line-height: 1.5;
+  max-width: 30ch;
+  font-size: var(--text-base);
+  line-height: 1.55;
   color: var(--fg-2);
 }
 .beat-side .mono {
-  font-size: 0.92em;
+  font-size: 0.9em;
   color: var(--fg);
 }
 .beat-side b.num {
   font-weight: 500;
   color: var(--fg);
 }
+.beat-cta {
+  margin-top: var(--s-2);
+}
+.hero-story .beat-cta {
+  visibility: hidden;
+}
+.hero.story-end .hero-story .beat-cta {
+  visibility: visible;
+  pointer-events: auto;
+}
 /* Fallback (still image, reduced motion): every pair at once, under the card. */
 .story-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-5) var(--s-7);
-  padding-block: var(--s-6) 0;
+  gap: var(--s-7) var(--s-7);
+  padding-block: var(--s-7) 0;
+}
+.story-grid .beat-title {
+  max-width: none;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
 }
 .dot {
   width: 8px;
@@ -354,16 +374,30 @@
   }
   .story-room {
     height: 100%;
+    margin-inline: 0;
   }
   .hero-story .beat-earn,
   .hero-story .beat-use {
+    justify-items: center;
     text-align: center;
     translate: 0 calc((1 - var(--o)) * 12px);
   }
   .hero-story .beat-side {
     align-self: start;
-    padding-top: var(--s-2);
-    gap: 2px;
+    gap: 4px;
+  }
+  .hero-story .beat-title {
+    max-width: none;
+    font-size: clamp(1.5rem, 6.4vw, 2rem);
+  }
+  .hero-story .beat-side p {
+    max-width: 40ch;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+  /* Under the card there's room for words, not buttons; the sections below carry the same calls to action. */
+  .hero-story .beat-cta {
+    display: none;
   }
 }
 @media (max-width: 640px) {
