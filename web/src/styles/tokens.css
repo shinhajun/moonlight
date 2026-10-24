@@ -1,0 +1,227 @@
+/* Moonlight design tokens.
+   Day shift: a printed broadsheet, blue-black ink on bone paper.
+   Night shift: the same print under moonlight, with lamplit windows. */
+
+:root {
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --font-body: 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'IM Fell English', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --text-2xl: 2.5rem;
+  --text-3xl: 3.5rem;
+  --text-display: clamp(3.4rem, 9vw, 8.5rem);
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --s-9: 96px;
+  --s-10: 144px;
+  --gutter: clamp(16px, 4vw, 48px);
+  --maxw: 1320px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --radius: 3px;
+}
+
+/* ---------- Day shift ---------- */
+:root,
+:root[data-theme='day'] {
+  color-scheme: light;
+  --bg: oklch(0.958 0.017 86);
+  --bg-2: oklch(0.982 0.01 86);
+  --bg-3: oklch(0.925 0.022 84);
+  --ink: oklch(0.235 0.035 268);
+  --ink-2: oklch(0.42 0.03 266);
+  --ink-3: oklch(0.55 0.025 264);
+  --rule: oklch(0.855 0.022 82);
+  --rule-strong: oklch(0.72 0.03 80);
+  --lamp: oklch(0.8 0.145 78);
+  --lamp-soft: oklch(0.8 0.145 78 / 0.22);
+  --on-lamp: oklch(0.22 0.045 65);
+  --brass: oklch(0.5 0.11 62);
+  --patina: oklch(0.47 0.085 172);
+  --patina-bg: oklch(0.47 0.085 172 / 0.1);
+  --oxide: oklch(0.52 0.18 31);
+  --oxide-bg: oklch(0.52 0.18 31 / 0.09);
+  --steel: oklch(0.5 0.02 260);
+  --press: var(--ink);
+  --code-bg: oklch(0.235 0.035 268);
+  --code-ink: oklch(0.92 0.02 86);
+  --grain: 0.06;
+
+  /* scene */
+  --sky-glow: oklch(0.93 0.03 80);
+  --hill-far: oklch(0.89 0.025 82);
+  --hill: oklch(0.82 0.03 80);
+  --house: oklch(0.27 0.035 268);
+  --house-roof: oklch(0.32 0.04 268);
+  --win-off: oklch(0.42 0.03 266);
+  --factory: oklch(0.36 0.02 268);
+  --factory-win: oklch(0.5 0.02 250);
+  --smoke: oklch(0.55 0.015 260 / 0.22);
+  --steam: oklch(0.5 0.02 260 / 0.35);
+  --wire: oklch(0.42 0.03 266 / 0.45);
+  --star: 0;
+}
+
+/* ---------- Night shift ---------- */
+:root[data-theme='night'] {
+  color-scheme: dark;
+  --bg: oklch(0.18 0.03 268);
+  --bg-2: oklch(0.215 0.032 268);
+  --bg-3: oklch(0.155 0.026 268);
+  --ink: oklch(0.93 0.02 88);
+  --ink-2: oklch(0.77 0.03 262);
+  --ink-3: oklch(0.62 0.032 264);
+  --rule: oklch(0.3 0.032 266);
+  --rule-strong: oklch(0.42 0.035 266);
+  --lamp: oklch(0.84 0.14 80);
+  --lamp-soft: oklch(0.84 0.14 80 / 0.16);
+  --on-lamp: oklch(0.2 0.045 65);
+  --brass: oklch(0.8 0.11 80);
+  --patina: oklch(0.79 0.095 168);
+  --patina-bg: oklch(0.79 0.095 168 / 0.12);
+  --oxide: oklch(0.7 0.17 33);
+  --oxide-bg: oklch(0.7 0.17 33 / 0.13);
+  --steel: oklch(0.72 0.025 255);
+  --press: oklch(0.08 0.02 268);
+  --code-bg: oklch(0.135 0.024 268);
+  --code-ink: oklch(0.9 0.02 88);
+  --grain: 0.09;
+
+  --sky-glow: oklch(0.25 0.04 262);
+  --hill-far: oklch(0.21 0.032 266);
+  --hill: oklch(0.145 0.025 268);
+  --house: oklch(0.11 0.02 268);
+  --house-roof: oklch(0.13 0.022 268);
+  --win-off: oklch(0.24 0.025 266);
+  --factory: oklch(0.1 0.015 268);
+  --factory-win: oklch(0.33 0.03 250);
+  --smoke: oklch(0.45 0.02 262 / 0.28);
+  --steam: oklch(0.9 0.01 260 / 0.35);
+  --wire: oklch(0.7 0.03 262 / 0.28);
+  --star: 1;
+}
+
+/* ---------- base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  font-kerning: normal;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.5s var(--ease-out), color 0.5s var(--ease-out);
+  overflow-x: hidden;
+}
+
+/* Paper grain over everything. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: var(--grain);
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.1 0 0 0 0 0.15 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-theme='night'] body::before {
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.6 0 0 0 0 0.7 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--lamp);
+  color: var(--on-lamp);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lamp);
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: 0.005em;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
