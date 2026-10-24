@@ -19,7 +19,7 @@ node scripts/chat-states.mjs --base=http://localhost:5173   # errors, queue and 
 ## Hero GPU
 
 - The landing's 3D card lives in `src/components/gpu/scene.js` and loads lazily with three.js (landing only, WebGL only).
-- The hero pins for three screens of scroll (two below 1024 px) while the card turns and comes apart. The beats are windows of progress in `src/components/gpu/timeline.js`, shared by the scene and the page's copy and caption. The camera refits every frame so the card is never cropped. Without 3D the hero shows the still and doesn't pin.
+- The hero pins for three screens of scroll (two below 1024 px) while the card turns and comes apart. Each of the four beats brings in one pair of side blocks (GPU owners left, developers right; stacked under the card below 1024 px). The beats are windows of progress in `src/components/gpu/timeline.js`, shared by the scene and the page. The camera refits every frame into the space the side blocks leave (`.story-room`), so the card is never cropped or covered. Without 3D (or with reduced motion) the hero shows the still, doesn't pin, and lists the four pairs in a grid under it.
 - Drop a Blender export at `src/assets/models/gpu.glb` (node names per PROTOCOL / ASSETS.md) and the hero uses it, hashed into `/assets`. Without it, or if it fails to load, the procedural card is used.
 - Regenerate the static fallback from the live scene: open `/?gpu=3d&capture=1`, run `window.__gpuCapture(0, { x: 0, y: 0.06 / 1.12, w: 1, h: 1 / 1.12 })` (the card fills the middle 1/1.12 of the height, matching the still's CSS box), crop to about 0.9 × the height around the center, and save it as `public/gpu-still.webp`.
 - `?gpu=3d` / `?gpu=still` force either path (headless browsers default to the still).

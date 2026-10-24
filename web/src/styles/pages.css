@@ -44,7 +44,7 @@
 
 /* ================================================================ LANDING */
 /* Symmetric hero: Earn | standing GPU | Use. With the 3D card it pins for three screens of scroll while the
-   card turns and comes apart; the page writes --copy, --cap and --lit (0..1) as it goes. */
+   card turns and comes apart; the page writes --copy, --lit and --b0..--b3 (0..1) as it goes. */
 .hero {
   --nav-h: 60px; /* the masthead's height: the pinned screen sits right under it */
   position: relative;
@@ -199,22 +199,83 @@
 .hero.ready .gpu-still {
   opacity: 0;
 }
-.hero-caption {
+/* The side story: one pair of blocks per beat, owners on the left and developers on the right, in the
+   columns beside the opened card. All pairs share the same cells; --o (from --b0..--b3) shows one at a time.
+   .story-room is the space they leave, where the 3D scene fits the opened card. */
+.hero-story {
+  --story-w: clamp(200px, 19vw, 290px);
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 3%;
-  z-index: 2;
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--fg-2);
-  opacity: var(--cap, 0);
-  translate: 0 calc((1 - var(--cap, 0)) * 8px);
+  inset: 0;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+  display: grid;
+  grid-template-columns: var(--story-w) minmax(0, 1fr) var(--story-w);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: 'earn room use';
+  column-gap: var(--s-6);
+  align-items: center;
   pointer-events: none;
 }
-.hero-caption b {
-  font-weight: 500;
+.story-room {
+  grid-area: room;
+  height: 92%;
+}
+.beat {
+  display: contents;
+}
+.beat-side {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line-2);
+}
+.hero-story .beat-side {
+  opacity: var(--o);
+}
+.hero-story .beat-earn {
+  grid-area: earn;
+  text-align: right;
+  translate: calc((1 - var(--o)) * -24px) 0;
+}
+.hero-story .beat-use {
+  grid-area: use;
+  translate: calc((1 - var(--o)) * 24px) 0;
+}
+.beat-label {
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+.beat-earn .beat-label {
   color: var(--accent-text);
+}
+.beat-title {
+  font-size: clamp(1.1rem, 1.45vw, 1.35rem);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.beat-side p {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.beat-side .mono {
+  font-size: 0.92em;
+  color: var(--fg);
+}
+.beat-side b.num {
+  font-weight: 500;
+  color: var(--fg);
+}
+/* Fallback (still image, reduced motion): every pair at once, under the card. */
+.story-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-5) var(--s-7);
+  padding-block: var(--s-6) 0;
 }
 .dot {
   width: 8px;
@@ -232,31 +293,6 @@
 }
 .label {
   font-size: var(--text-xs);
-  color: var(--fg-3);
-}
-/* how it works, under the hero */
-.steps-row ol {
-  list-style: none;
-  margin: 0;
-  padding: var(--s-6) 0 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-3);
-}
-.steps-row li {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: var(--s-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-1);
-}
-.steps-row b {
-  font-weight: 500;
-}
-.steps-row p {
-  font-size: var(--text-sm);
   color: var(--fg-3);
 }
 
@@ -305,7 +341,33 @@
   .hero-cta .btn {
     width: 100%;
   }
-  .steps-row ol {
+  .hero-story {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'room'
+      'earn'
+      'use';
+    row-gap: var(--s-3);
+    padding-block: var(--s-3) var(--s-5);
+    align-items: end;
+  }
+  .story-room {
+    height: 100%;
+  }
+  .hero-story .beat-earn,
+  .hero-story .beat-use {
+    text-align: center;
+    translate: 0 calc((1 - var(--o)) * 12px);
+  }
+  .hero-story .beat-side {
+    align-self: start;
+    padding-top: var(--s-2);
+    gap: 2px;
+  }
+}
+@media (max-width: 640px) {
+  .story-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

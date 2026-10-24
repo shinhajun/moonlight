@@ -1,8 +1,8 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, modelPath } from '../router.jsx';
-import { listOf, useApi, useEvents, usd, int, priceLabel, KINDS } from '../api.js';
+import { listOf, useApi, useEvents, usd, int, priceLabel, priceValue, KINDS } from '../api.js';
 import { Badge, CopyBox, Icon, RollingNumber, useTween, BADGE_COPY } from '../components/ui.jsx';
-import { caption, chipsLit, copyOut } from '../components/gpu/timeline.js';
+import { BEATS, beat, chipsLit, copyOut } from '../components/gpu/timeline.js';
 import { installCommand, detectOS } from './AddComputer.jsx';
 import { BASE } from '../snippets.js';
 
@@ -27,7 +27,7 @@ function can3D() {
 }
 
 // Scroll progress through the pinned hero, eased so wheel steps glide. It writes the CSS variables the copy,
-// caption and glow use, and a ref the 3D scene reads every frame, so scrolling never re-renders React.
+// side story and glow use, and a ref the 3D scene reads every frame, so scrolling never re-renders React.
 function useHeroProgress(ref, pinned) {
   const progress = useRef(0);
   useEffect(() => {
@@ -39,12 +39,18 @@ function useHeroProgress(ref, pinned) {
     let raf = 0;
     let last = 0;
     let out = false;
+    // Only variables that changed are written, so a beat at rest doesn't restyle its blocks every frame.
+    const vars = {};
+    const set = (k, v) => {
+      const s = v.toFixed(4);
+      if (vars[k] !== s) el.style.setProperty(k, (vars[k] = s));
+    };
     const write = (p) => {
       progress.current = p;
       const c = copyOut(p);
-      el.style.setProperty('--copy', c.toFixed(4));
-      el.style.setProperty('--cap', caption(p).toFixed(4));
-      el.style.setProperty('--lit', chipsLit(p).toFixed(4));
+      set('--copy', c);
+      set('--lit', chipsLit(p));
+      BEATS.forEach((_, i) => set(`--b${i}`, beat(i, p)));
       if (c > 0.98 !== out) el.classList.toggle('copy-out', (out = c > 0.98));
     };
     const step = (now) => {
@@ -82,37 +88,88 @@ function useHeroProgress(ref, pinned) {
   return progress;
 }
 
-// The middle column's box, as fractions of the pinned screen: where the closed 3D card sits.
-function useRoom(ref, roomRef, on) {
+// Where the 3D card may go, as fractions of the pinned screen: the middle column while closed (rest), and the
+// space the side story leaves while open. Both are laid out by CSS; the scene fits the card inside them.
+function useRooms(ref, restRef, openRef, on) {
   const [room, setRoom] = useState(null);
   useEffect(() => {
     if (!on) return;
     const sticky = ref.current.firstElementChild;
     const measure = () => {
       const s = sticky.getBoundingClientRect();
-      const r = roomRef.current.getBoundingClientRect();
-      setRoom({ x: (r.left - s.left) / s.width, y: (r.top - s.top) / s.height, w: r.width / s.width, h: r.height / s.height });
+      const frac = (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: (r.left - s.left) / s.width, y: (r.top - s.top) / s.height, w: r.width / s.width, h: r.height / s.height };
+      };
+      setRoom({ rest: frac(restRef.current), open: frac(openRef.current) });
     };
     const ro = new ResizeObserver(measure);
-    ro.observe(sticky);
-    ro.observe(roomRef.current);
+    [sticky, restRef.current, openRef.current].forEach((el) => ro.observe(el));
     return () => ro.disconnect();
-  }, [ref, roomRef, on]);
+  }, [ref, restRef, openRef, on]);
   return room;
 }
 
-const STEPS = [
-  ['Your apps use part of your VRAM.', 'Games, editors and local models rarely fill a card for long.'],
-  ['Moonlight serves open models in the spare room.', 'Requests are routed to your GPU only when the room is there.'],
-  ['You earn on every token.', '90% of each request is yours. Pause or reprice anytime.'],
+// Cheapest live chat model, from the same catalog as the price table.
+function PriceLine() {
+  const { data } = useApi('/api/models', { interval: 60_000 });
+  const m = listOf(data, 'models')
+    .filter((x) => x.kind === 'chat' && !x.auto && x.sellers_online > 0 && priceValue(x.price_from) != null)
+    .sort((a, b) => priceValue(a.price_from) - priceValue(b.price_from))[0];
+  if (!m) return 'Pay only for the tokens you use, at prices sellers set.';
+  return (
+    <>
+      Chat from <b className="num">{priceLabel(m.price_from, 'chat').amount}</b> per 1M output tokens right now, on <span className="mono">{m.id}</span>.
+    </>
+  );
+}
+
+// The side story, one pair per beat (timeline.js BEATS): fans and shroud, heatsink, PCB, backplate.
+const STORY = [
+  [
+    ['Runs alongside your apps', 'When a game or your work needs the GPU, Moonlight pauses and steps aside.'],
+    ['One OpenAI-compatible API', 'Change the base URL. Keep your code and your SDK.'],
+  ],
+  [
+    ['Uses the models you already have', 'It finds them in Ollama, LM Studio, llama.cpp and vLLM.'],
+    [
+      'Pick a model or go auto',
+      <>
+        <span className="mono">auto/chat-small</span> sends each request to the best free GPU.
+      </>,
+    ],
+  ],
+  [
+    ['Your spare VRAM, earning', 'You keep 90% of every request, at the price you set.'],
+    ['Pay per token', <PriceLine key="price" />],
+  ],
+  [
+    ['Set a VRAM budget', 'Models that need more memory than you allow are never served.'],
+    ['Every seller is checked', 'Hidden test jobs catch a GPU running a smaller model.'],
+  ],
 ];
+const SIDES = [
+  ['earn', 'GPU owners'],
+  ['use', 'Developers'],
+];
+
+function StoryPair({ pair }) {
+  return SIDES.map(([side, label], k) => (
+    <div key={side} className={`beat-side beat-${side}`}>
+      <span className="beat-label">{label}</span>
+      <b className="beat-title">{pair[k][0]}</b>
+      <p>{pair[k][1]}</p>
+    </div>
+  ));
+}
 
 function Hero() {
   const ref = useRef(null);
   const roomRef = useRef(null);
+  const openRef = useRef(null);
   const show3D = useMemo(can3D, []);
   const progress = useHeroProgress(ref, show3D);
-  const room = useRoom(ref, roomRef, show3D);
+  const room = useRooms(ref, roomRef, openRef, show3D);
   const [ready, setReady] = useState(false);
   const onReady = useCallback(() => setReady(true), []);
   return (
@@ -154,26 +211,23 @@ function Hero() {
           </div>
         </div>
         {show3D && (
-          <p className="hero-caption" aria-hidden>
-            <b>VRAM</b>: where the spare room lives.
-          </p>
+          <div className="hero-story">
+            <div className="story-room" ref={openRef} />
+            {STORY.map((pair, i) => (
+              <div key={i} className="beat" style={{ '--o': `var(--b${i}, 0)` }}>
+                <StoryPair pair={pair} />
+              </div>
+            ))}
+          </div>
         )}
       </div>
-    </section>
-  );
-}
-
-function Steps() {
-  return (
-    <section className="wrap steps-row" aria-label="How it works">
-      <ol>
-        {STEPS.map(([title, text]) => (
-          <li key={title}>
-            <b>{title}</b>
-            <p>{text}</p>
-          </li>
-        ))}
-      </ol>
+      {!show3D && (
+        <div className="wrap story-grid">
+          {STORY.map((pair, i) => (
+            <StoryPair key={i} pair={pair} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -263,7 +317,6 @@ export default function Landing() {
   return (
     <main className="landing">
       <Hero />
-      <Steps />
       <NetworkStats />
 
       <section className="wrap halves">
