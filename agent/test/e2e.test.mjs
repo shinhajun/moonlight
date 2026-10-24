@@ -158,6 +158,35 @@ test('reconnects and says hello again after the connection drops', async () => {
   assert.ok(!r.error, JSON.stringify(r.error));
 });
 
+test('is back within ~2 s of a gateway restart, even after the gateway was down for a while', { timeout: 60_000 }, async () => {
+  const first = await startStub();
+  const { port } = first;
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'moonlight-restart-'));
+  const hello = once(first.events, 'hello');
+  const a = startAgent(first, h, ['--token', `ml_st_${'f'.repeat(32)}`, '--models', CHAT]);
+  try {
+    await hello;
+    await waitFor(() => /Connected/.test(a.out()), 5000, 'connected');
+    // A deploy: the gateway closes sockets with 1012 (service restart), stays down for 8 s, comes back.
+    // The old 1-2-4-8 s backoff would have retried at about 1, 3, 7 and 15 s, so it got back 7 s late.
+    for (const n of first.nodes.values()) n.ws.close(1012);
+    await first.close();
+    await sleep(8000);
+    const second = await startStub({ port });
+    try {
+      const t0 = Date.now();
+      await once(second.events, 'hello', () => true, 10_000).catch((e) => { throw new Error(`${e.message}\n${a.out()}`); });
+      const ms = Date.now() - t0;
+      assert.ok(ms < 2000, `reconnected ${ms} ms after the gateway came back`);
+    } finally {
+      await second.close();
+    }
+  } finally {
+    a.proc.kill('SIGKILL');
+    fs.rmSync(h, { recursive: true, force: true });
+  }
+});
+
 test('drains on SIGTERM: sends drain, finishes the in-flight job, exits 0', async () => {
   const drain = once(stub.events, 'frame', (e) => e.msg.t === 'drain');
   let signalled = false;
