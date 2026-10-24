@@ -138,24 +138,32 @@ function PriceLine() {
   const m = listOf(data, 'models')
     .filter((x) => x.kind === 'chat' && !x.auto && x.sellers_online > 0 && priceValue(x.price_from) != null)
     .sort((a, b) => priceValue(a.price_from) - priceValue(b.price_from))[0];
-  if (!m) return 'Pay only for the tokens you use, at prices sellers set. No subscription, and nothing to provision.';
+  const more = <span className="beat-more"> No subscription, and nothing to provision.</span>;
+  if (!m) return <>Pay only for the tokens you use, at prices sellers set.{more}</>;
   return (
     <>
-      Chat from <b className="num">{priceLabel(m.price_from, 'chat').amount}</b> per 1M output tokens right now, on <span className="mono">{m.id}</span>. No
-      subscription, and nothing to provision.
+      Chat from <b className="num">{priceLabel(m.price_from, 'chat').amount}</b> per 1M output tokens right now, on <span className="mono">{m.id}</span>.{more}
     </>
   );
 }
+
+// A second sentence that phones leave out, to keep the card big above the text.
+const more = (first, second) => (
+  <>
+    {first}
+    <span className="beat-more"> {second}</span>
+  </>
+);
 
 // The side story, one pair per beat (timeline.js BEATS): fans and shroud, heatsink, PCB, backplate.
 // Each side is [title, copy, cta?]; only the last beat carries the calls to action.
 const STORY = [
   [
-    ['Runs alongside your apps', 'When a game, an editor or your own models need the GPU, Moonlight pauses and unloads. It picks up again once things are quiet.'],
-    ['One OpenAI-compatible API', 'Point the OpenAI SDK at Moonlight by changing the base URL. Your code, prompts and streaming stay the same.'],
+    ['Runs alongside your apps', more('When a game, an editor or your own models need the GPU, Moonlight pauses and unloads.', 'It picks up again once things are quiet.')],
+    ['One OpenAI-compatible API', more('Point the OpenAI SDK at Moonlight by changing the base URL.', 'Your code, prompts and streaming stay the same.')],
   ],
   [
-    ['Uses the models you already have', 'Moonlight finds the open models you run in Ollama, LM Studio, llama.cpp or vLLM. You choose which ones to sell.'],
+    ['Uses the models you already have', more('Moonlight finds the open models you run in Ollama, LM Studio, llama.cpp or vLLM.', 'You choose which ones to sell.')],
     [
       'Pick a model or go auto',
       <>
@@ -164,7 +172,7 @@ const STORY = [
     ],
   ],
   [
-    ['Your spare VRAM, earning', 'You keep 90% of every request your GPU serves, at the price you set. Earnings show up live on your dashboard.'],
+    ['Your spare VRAM, earning', more('You keep 90% of every request your GPU serves, at the price you set.', 'Earnings show up live on your dashboard.')],
     ['Pay per token', <PriceLine key="price" />],
   ],
   [

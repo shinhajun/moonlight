@@ -115,6 +115,12 @@ export function Icon({ name, size = 16, ...rest }) {
           <path {...P} d="M5.5 3.5v9M10.5 3.5v9" strokeWidth="2" />
         </svg>
       );
+    case 'pencil':
+      return (
+        <svg {...common}>
+          <path {...P} d="M10.5 3l2.5 2.5L6 12.5l-3 .5.5-3z" />
+        </svg>
+      );
     default:
       return null;
   }

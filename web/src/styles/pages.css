@@ -408,8 +408,11 @@
     font-size: 0.9375rem;
     line-height: 1.5;
   }
-  /* Under the card there's room for words, not buttons; the sections below carry the same calls to action. */
-  .hero-story .beat-cta {
+  /* Under the card there's room for one sentence, not labels or buttons; the sections below carry the same
+     calls to action. */
+  .hero-story .beat-cta,
+  .hero-story .beat-label,
+  .hero-story .beat-more {
     display: none;
   }
 }
@@ -2578,17 +2581,35 @@
   gap: var(--s-7);
   align-items: start;
 }
-.dev-keys,
+.dev-side,
 .dev-code {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--s-5);
   min-width: 0;
 }
+/* API keys: full width above the reference, so the table has room for its stats. */
+.dev-keys {
+  display: grid;
+  gap: var(--s-4);
+  margin-bottom: var(--s-8);
+}
+.keys-head {
+  display: grid;
+  gap: 6px;
+}
 .keys {
   display: grid;
   gap: var(--s-4);
-  justify-items: start;
+}
+.key-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-3);
+}
+.key-create .field {
+  flex: 0 1 320px;
 }
 .keys-scroll {
   width: 100%;
@@ -2597,6 +2618,50 @@
 }
 .keys-table td {
   white-space: nowrap;
+}
+.keys-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.keys-table tr.is-new {
+  background: var(--accent-soft);
+}
+.key-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font-weight: 500;
+  cursor: text;
+}
+.key-name svg {
+  color: var(--fg-3);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.key-name:hover svg,
+.key-name:focus-visible svg {
+  opacity: 1;
+}
+.key-rename {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+}
+.input-sm {
+  min-height: 32px;
+  padding: 5px 9px;
+}
+.key-prefix {
+  color: var(--fg-2);
+}
+.keys-empty {
+  display: grid;
+  gap: 4px;
+  padding: var(--s-5);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r);
 }
 .key-once {
   display: grid;
@@ -2611,11 +2676,95 @@
 .key-once .btn {
   justify-self: start;
 }
-.confirm {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
+/* The whole secret stays visible on a phone: it wraps instead of scrolling under the Copy button. */
+.key-once pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.key-once-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+/* Narrow screens: each key becomes a small block, name and delete on top, the facts in a 2-column grid. */
+@media (max-width: 720px) {
+  .keys-scroll {
+    border: 0;
+    border-radius: 0;
+  }
+  .keys-table,
+  .keys-table tbody {
+    display: block;
+  }
+  .keys-table thead {
+    display: none;
+  }
+  .keys-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+    padding: var(--s-4) 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .keys-table tbody tr:hover {
+    background: none;
+  }
+  .keys-table td,
+  .keys-table td.r,
+  .keys-table tbody tr:last-child td {
+    display: grid;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+  .keys-table td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    color: var(--fg-3);
+  }
+  .keys-table .key-name-cell {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .keys-table .key-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-items: end;
+  }
+  .keys-table .key-prefix {
+    grid-column: 1 / -1;
+  }
+  .key-name svg {
+    opacity: 1;
+  }
+}
+/* A confirm that has to interrupt: the one modal on the site. */
+.dialog {
+  width: min(440px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  color: var(--fg);
+  box-shadow: var(--shadow), var(--highlight);
+}
+.dialog::backdrop {
+  background: oklch(0.1 0.01 265 / 0.6);
+  backdrop-filter: blur(2px);
+}
+.dialog-body {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-5);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
 }
 .dev-notes {
   display: grid;
