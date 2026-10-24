@@ -1,31 +1,31 @@
 // Lazy entry for the landing hero's 3D card. three.js lives in this chunk only.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { createGpuScene } from './gpu/scene.js';
 
 // gpu.glb lives in src/assets/models so Vite hashes it into /assets (cached immutably). The glob is empty
 // until the file exists, and then the procedural card is used.
 const GLB = Object.values(import.meta.glob('../assets/models/gpu.glb', { query: '?url', import: 'default', eager: true }))[0] || null;
 
-export default function GpuStage({ progress = 0, load = 0.4 }) {
+// progress: a ref holding hero progress 0..1, read every frame. room: the box the closed card fills, in
+// canvas fractions. The canvas covers the whole pinned hero.
+export default function GpuStage({ progress, room, onReady }) {
   const wrap = useRef(null);
   const canvas = useRef(null);
   const api = useRef(null);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const el = wrap.current;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     // The Blender model when the build has one; the procedural card otherwise or if it fails to load.
-    const s = createGpuScene(canvas.current, { reduced, modelUrl: GLB, onReady: () => setReady(true) });
+    const s = createGpuScene(canvas.current, { reduced, modelUrl: GLB, onReady, progress: () => progress.current });
     api.current = s;
     s.resize(el.clientWidth, el.clientHeight);
-    s.setProgress(progress);
     // Tooling hook for regenerating public/gpu-still.webp: /?gpu=3d&capture=1
     if (new URLSearchParams(location.search).has('capture')) {
-      window.__gpuCapture = (p = 0) => {
+      window.__gpuCapture = (p = 0, r) => {
         s.stop();
+        if (r) s.setRoom(r);
         s.setProgress(p);
-        s.renderOnce();
         return canvas.current.toDataURL('image/png');
       };
       window.__gpuInfo = () => s.info();
@@ -53,15 +53,11 @@ export default function GpuStage({ progress = 0, load = 0.4 }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.current?.setProgress(progress);
-  }, [progress]);
-  useEffect(() => {
-    api.current?.setLoad(load);
-  }, [load]);
+    if (room) api.current?.setRoom(room);
+  }, [room]);
 
   return (
-    <div ref={wrap} className={`gpu-stage ${ready ? 'ready' : ''}`}>
-      <img className="gpu-still" src="/gpu-still.webp" alt="" aria-hidden />
+    <div ref={wrap} className="gpu-stage">
       <canvas ref={canvas} aria-hidden />
     </div>
   );

@@ -1,9 +1,12 @@
-// A procedural graphics card in three.js: shroud, fans, heatsink, PCB with die and VRAM, backplate.
-// setProgress(0..1) explodes it into layers and lights the VRAM chips. No external model files.
+// The landing hero's graphics card in three.js: the Blender model, or a procedural one (shroud, fans,
+// heatsink, PCB with die and VRAM, backplate). Hero progress 0..1 turns it, takes it apart layer by layer
+// and lights the VRAM chips (see timeline.js); the camera refits every frame so nothing leaves the frame.
 import {
   ACESFilmicToneMapping,
   AdditiveBlending,
   Box3,
+  Euler,
+  Matrix3,
   Vector3,
   RepeatWrapping,
   Sprite,
@@ -41,6 +44,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import dracoWrapperUrl from 'three/examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js?url';
 import dracoWasmUrl from 'three/examples/jsm/libs/draco/gltf/draco_decoder.wasm?url';
+import { CHIPS, LAYERS, TURN, chipsLit, copyOut, smooth } from './timeline.js';
 
 const L = 4.4; // length
 const H = 1.75; // height
@@ -372,10 +376,10 @@ function buildGpu() {
   pcb.add(traceGlow);
 
   gpu.add(pcb, sink, shroud, back, bracket, ...fans);
-  const move = (obj, x, y, z) => ({ obj, base: obj.position.clone(), delta: new Vector3(x, y, z) });
+  const move = (obj, layer, x, y, z) => ({ obj, layer, base: obj.position.clone(), delta: new Vector3(x, y, z) });
   return {
     object: gpu,
-    moves: [move(bracket, -0.6, 0, 0), move(back, 0, 0, -0.75), move(sink, 0, 0, 0.78), move(shroud, 0, 0, 1.5), ...fans.map((f) => move(f, 0, 0, 2.15))],
+    moves: [move(bracket, 'bracket', -0.6, 0, 0), move(back, 'back', 0, 0, -0.95), move(sink, 'sink', 0, 0, 1.0), move(shroud, 'shroud', 0, 0, 1.9), ...fans.map((f) => move(f, 'fans', 0, 0, 2.7))],
     rotors: fans.map((f) => f.userData.rotor),
     spin: -1,
     chips: chips.map((mat, i) => ({ mats: [mat], glow: chipGlows[i] })),
@@ -387,13 +391,13 @@ function buildGpu() {
 
 // ---------------------------------------------------------------- the Blender model
 
-// How far each named layer travels when the card opens, in card units (the card is 4.4 long).
+// How far each named layer travels when the card opens, in card units (the card is 4.4 long), and its beat.
 const EXPLODE = [
-  [['fan_0', 'fan_1', 'fan_2', 'fan_frame'], [0, 0, 2.15]],
-  [['shroud'], [0, 0, 1.5]],
-  [['heatsink_fins', 'heatpipes'], [0, 0, 0.78]],
-  [['backplate'], [0, 0, -0.75]],
-  [['io_bracket'], [-0.6, 0, 0]],
+  [['fan_0', 'fan_1', 'fan_2', 'fan_frame'], [0, 0, 2.7], 'fans'],
+  [['shroud'], [0, 0, 1.9], 'shroud'],
+  [['heatsink_fins', 'heatpipes'], [0, 0, 1.0], 'sink'],
+  [['backplate'], [0, 0, -0.95], 'back'],
+  [['io_bracket'], [-0.6, 0, 0], 'bracket'],
 ];
 
 // Builds the same rig from gpu.glb by node name (Y up, fans face +Z, length along X).
@@ -428,25 +432,26 @@ function rigFromGltf(model) {
 
   // Explode moves; a node inside a moving parent only moves by the difference.
   const want = new Map();
-  EXPLODE.forEach(([names, d]) => names.forEach((n) => named(n) && want.set(named(n), new Vector3(...d))));
+  EXPLODE.forEach(([names, d, layer]) => names.forEach((n) => named(n) && want.set(named(n), { d: new Vector3(...d), layer })));
+  // Accent strips leave with the shroud in front of the PCB or the backplate behind it.
   const pcbZ = named('pcb') ? centerOf(named('pcb')).z : 0;
   prefixed('accent_').forEach((o) => {
     for (let p = o; p; p = p.parent) if (want.has(p)) return;
-    want.set(o, new Vector3(0, 0, centerOf(o).z >= pcbZ ? 1.5 : -0.75));
+    want.set(o, centerOf(o).z >= pcbZ ? { d: new Vector3(0, 0, 1.9), layer: 'shroud' } : { d: new Vector3(0, 0, -0.95), layer: 'back' });
   });
   const moves = [];
-  for (const [o, d] of want) {
+  for (const [o, { d, layer }] of want) {
     let inherited = new Vector3();
     for (let p = o.parent; p; p = p.parent) {
       if (want.has(p)) {
-        inherited = want.get(p);
+        inherited = want.get(p).d;
         break;
       }
     }
     const world = o.getWorldPosition(new Vector3());
     const from = o.parent.worldToLocal(world.clone());
     const to = o.parent.worldToLocal(world.clone().add(d.clone().sub(inherited)));
-    moves.push({ obj: o, base: o.position.clone(), delta: to.sub(from) });
+    moves.push({ obj: o, layer, base: o.position.clone(), delta: to.sub(from) });
   }
 
   const emissive = (o, intensity) => {
@@ -471,6 +476,9 @@ function rigFromGltf(model) {
     const s = sizeOf(o);
     staticGlows.push(glowAt(o, Math.max(s.x, s.y) * 1.15 + 0.2, Math.min(s.x, s.y) + 0.24, 0.5));
   });
+  // Seen from above, the fins' polished tops mirror the studio's ceiling as a white slab: dim their reflections.
+  const dim = [];
+  named('heatsink_fins')?.traverse((m) => m.isMesh && dim.push(m.material));
   const rotors = ['fan_0', 'fan_1', 'fan_2'].map(named).filter(Boolean);
   const pcb = named('pcb');
   return {
@@ -482,6 +490,7 @@ function rigFromGltf(model) {
     board: null,
     traceGlow: pcb ? glowAt(pcb, L * 1.2, H * 1.4, 0) : null,
     staticGlows,
+    dim,
   };
 }
 
@@ -496,15 +505,24 @@ function loadModel(url, renderer) {
   });
 }
 
-const smooth = (a, b, x) => {
-  const t = MathUtils.clamp((x - a) / (b - a), 0, 1);
-  return t * t * (3 - 2 * t);
-};
+// A mesh's own box, without the glow sprites hung under it.
+function ownBox(o) {
+  if (o.isInstancedMesh) {
+    o.computeBoundingBox();
+    return o.boundingBox.clone();
+  }
+  if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+  return o.geometry.boundingBox.clone();
+}
+
+// Where the opened card may go once the side copy is gone: canvas fractions, top-left origin.
+// The fit is conservative for a turned card (box corners, perspective), so this is a little taller than the closed card's box.
+const FULL = { x: 0.04, y: 0.04, w: 0.92, h: 0.87 };
 
 // modelUrl: a gpu.glb following the node-name contract; the procedural card is used without one or if it fails.
-export function createGpuScene(canvas, { reduced = false, modelUrl = null, onReady = () => {} } = {}) {
+// progress: returns hero progress 0..1, read every frame while running.
+export function createGpuScene(canvas, { reduced = false, modelUrl = null, onReady = () => {}, progress = null } = {}) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = SRGBColorSpace;
@@ -515,7 +533,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   scene.environmentIntensity = 1.0;
 
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
-  camera.position.set(0, 0.25, 8.2);
+  camera.position.set(0, 0, 12);
 
   // Studio rig: warm key from top right, cool rim from behind for edge highlights, a little gold kick.
   const key = new DirectionalLight('#fff4e6', 2.6);
@@ -546,52 +564,134 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   root.add(pose);
   scene.add(root);
   let rig = null;
+  let parts = [];
+  let pts = null;
   const use = (r, source) => {
     rig = r;
     rig.source = source;
+    // A material's own envMapIntensity only applies with its own envMap.
+    rig.dim?.forEach((m) => {
+      m.envMap = scene.environment;
+      m.envMapIntensity = 0.3;
+      m.needsUpdate = true;
+    });
     pose.add(r.object);
+    measure();
     api.renderOnce();
     onReady(source);
   };
 
-  const state = { target: 0, t: 0, load: 0.4, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
+  // Each layer's box in root space (standing, closed) and how far it travels, for the camera fit.
+  function measure() {
+    root.position.set(0, 0, 0);
+    root.rotation.set(0, 0, 0);
+    root.updateMatrixWorld(true);
+    const owner = new Map();
+    rig.moves.forEach((m) => m.obj.traverse((o) => owner.set(o, m)));
+    const boxes = new Map();
+    rig.object.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = owner.get(o) || null;
+      if (!boxes.has(m)) boxes.set(m, new Box3());
+      boxes.get(m).union(ownBox(o).applyMatrix4(o.matrixWorld));
+    });
+    parts = [...boxes].map(([m, b]) => ({
+      win: m && LAYERS[m.layer],
+      delta: m ? m.delta.clone().applyMatrix3(new Matrix3().setFromMatrix4(m.obj.parent.matrixWorld)) : new Vector3(),
+      corners: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z)),
+    }));
+    pts = new Float32Array(parts.length * 24);
+  }
+
+  // Frames the turned, opened card inside the room: centered on its box, as close as it can be with every
+  // corner inside. The room slides from the closed card's box to most of the canvas as the copy steps aside.
+  const turn = new Matrix4();
+  const euler = new Euler();
+  const v = new Vector3();
+  function fit(t, pitch, yaw) {
+    turn.makeRotationFromEuler(euler.set(pitch, yaw, 0));
+    let n = 0;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const part of parts) {
+      const e = part.win ? smooth(part.win[0], part.win[1], t) : 0;
+      for (const c of part.corners) {
+        v.copy(c).addScaledVector(part.delta, e).applyMatrix4(turn);
+        pts[n++] = v.x;
+        pts[n++] = v.y;
+        pts[n++] = v.z;
+        x0 = Math.min(x0, v.x);
+        x1 = Math.max(x1, v.x);
+        y0 = Math.min(y0, v.y);
+        y1 = Math.max(y1, v.y);
+      }
+    }
+    const k = copyOut(t);
+    const r = state.room;
+    const w = MathUtils.lerp(r.w, FULL.w, k);
+    const h = MathUtils.lerp(r.h, FULL.h, k);
+    const ox = (MathUtils.lerp(r.x, FULL.x, k) + w / 2) * 2 - 1;
+    const oy = 1 - (MathUtils.lerp(r.y, FULL.y, k) + h / 2) * 2;
+    const tanY = Math.tan(MathUtils.degToRad(camera.fov / 2));
+    const tanX = tanY * camera.aspect;
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    let d = 0;
+    for (let i = 0; i < n; i += 3) d = Math.max(d, pts[i + 2] + Math.abs(pts[i] - cx) / (tanX * w), pts[i + 2] + Math.abs(pts[i + 1] - cy) / (tanY * h));
+    camera.position.set(cx, cy, d);
+    // Lens shift: the card's center lands on the room's center without turning the camera. setViewOffset also
+    // sets the aspect from the full size, so the full size keeps the canvas's aspect.
+    const a = camera.aspect;
+    camera.setViewOffset(2 * a, 2, -ox * a, oy, 2 * a, 2);
+    camera.updateProjectionMatrix();
+  }
+
+  const state = { t: 0, room: { ...FULL }, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
 
   // Glows are softer on light backgrounds and breathe slowly when idle.
   let glowScale = 1;
   function layout(t, time) {
     if (!rig) return;
-    const e = smooth(0, 1, t);
     glowScale = document.documentElement.dataset.theme === 'light' ? 0.55 : 1;
-    const breath = reduced ? 1 : 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(time * 1.4));
+    // Idle motion (sway, float, breathing glow) only at the top; once scrolling starts the card holds still.
+    const idle = reduced ? 0 : 1 - smooth(0, 0.06, t);
+    const breath = 1 - idle * 0.18 * (0.5 - 0.5 * Math.sin(time * 1.4));
     rig.staticGlows.forEach((g) => (g.material.opacity = g.userData.base * glowScale * breath));
-    rig.moves.forEach((m) => m.obj.position.copy(m.base).addScaledVector(m.delta, e));
+    rig.moves.forEach((m) => m.obj.position.copy(m.base).addScaledVector(m.delta, smooth(...LAYERS[m.layer], t)));
+    const span = 0.07;
+    const step = (CHIPS[1] - CHIPS[0] - span) / Math.max(1, rig.chips.length - 1);
     rig.chips.forEach((c, i) => {
-      const k = smooth(0.42 + i * 0.035, 0.56 + i * 0.035, t);
+      const k = smooth(CHIPS[0] + i * step, CHIPS[0] + i * step + span, t);
       c.mats.forEach((m) => (m.emissiveIntensity = 1.35 * k));
       c.glow.material.opacity = 0.55 * k * glowScale;
     });
-    if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.55, 1, t);
-    if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.6, 1, t) * glowScale;
-    // About 17° of yaw at rest, turning further as it opens so the stack of layers reads; a slow sway, no cursor follow.
-    const sway = reduced ? 0 : Math.sin(time * 0.3) * 0.07;
-    root.rotation.y = MathUtils.lerp(-0.3, -0.6, e) + sway;
-    root.rotation.x = MathUtils.lerp(0.05, 0.1, e);
-    // Opening pushes layers toward the viewer, which reads as a shift left; slide right to keep the stack centered.
-    root.position.x = 0.6 * e;
-    root.position.y = reduced ? 0 : Math.sin(time * 0.6) * 0.03;
-    root.scale.setScalar(MathUtils.lerp(1, 0.8, e));
+    if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.62, 0.85, t);
+    if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.62, 0.85, t) * glowScale;
+    // About 15° of yaw at rest, turning to 60° with a little more tilt as it opens.
+    const k = smooth(TURN[0], TURN[1], t);
+    const yaw = MathUtils.lerp(-0.26, -1.05, k);
+    const pitch = MathUtils.lerp(0.05, 0.2, k);
+    root.rotation.set(pitch, yaw + idle * Math.sin(time * 0.3) * 0.07, 0);
+    root.position.y = idle * Math.sin(time * 0.6) * 0.03;
+    fit(t, pitch, yaw);
     const light = document.documentElement.dataset.theme === 'light';
-    shadow.children[0].material.opacity = (light ? 0.22 : 0.45) * (1 - 0.35 * e);
-    shadow.children[1].material.opacity = (light ? 0.3 : 0.6) * (1 - 0.5 * e);
+    const ground = 1 - 0.9 * smooth(0.06, 0.4, t);
+    shadow.children[0].material.opacity = (light ? 0.22 : 0.45) * ground;
+    shadow.children[1].material.opacity = (light ? 0.3 : 0.6) * ground;
   }
 
   function frame(now) {
     const dt = Math.min(0.05, (now - state.last) / 1000);
     state.last = now;
-    // Critically damped follow for scroll, so motion stays smooth at any scroll speed.
-    const k = 1 - Math.exp(-dt * 6);
-    state.t += (state.target - state.t) * k;
-    const spin = dt * (1.2 + 3.5 * state.load);
+    const p = progress ? progress() : state.t;
+    if (p !== state.t) {
+      state.t = p;
+      state.lastInput = now;
+    }
+    // Fans speed up as the VRAM lights: the card is serving.
+    const spin = dt * (2.1 + 2.6 * chipsLit(state.t));
     rig?.rotors.forEach((r, i) => (r.rotation.z += rig.spin * spin * (1 + i * 0.03)));
     layout(state.t, now / 1000);
     renderer.render(scene, camera);
@@ -607,27 +707,21 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   }
 
   const api = {
+    // Sets progress directly (stills and captures); a running scene reads `progress` instead.
     setProgress(p) {
-      state.target = MathUtils.clamp(p, 0, 1);
-      state.lastInput = performance.now();
-      if (reduced || !state.running) {
-        state.t = state.target;
-        layout(state.t, 0);
-        renderer.render(scene, camera);
-      }
+      state.t = MathUtils.clamp(p, 0, 1);
+      if (!state.running) api.renderOnce();
     },
-    setLoad(l) {
-      state.load = l;
+    // The box the closed card fills, in canvas fractions: the hero's middle column.
+    setRoom(room) {
+      state.room = room;
+      if (!state.running) api.renderOnce();
     },
     resize(w, h) {
+      // A full-screen canvas: cap the pixel count on big, dense displays.
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75, Math.sqrt(4.4e6 / Math.max(1, w * h))));
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      // Fit about 4.5 units of card across the canvas, and keep it in frame vertically.
-      const tan = Math.tan(MathUtils.degToRad(camera.fov / 2));
-      // The standing card (4.4 tall) and its shadow fit the height; the opened stack fits the width.
-      camera.position.z = Math.max(4.85 / (2 * tan), 4.6 / camera.aspect / (2 * tan));
-      camera.position.y = -0.15;
-      camera.updateProjectionMatrix();
       if (!state.running) api.renderOnce();
     },
     start() {

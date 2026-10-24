@@ -1,8 +1,9 @@
 // Chat engine shared by the Chat page and model playgrounds: streaming, reasoning, queueing,
 // capacity errors, failover notes, and a receipt per answer naming the GPU that served it.
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { api, serviceError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS } from '../api.js';
-import { Badge, Machine, Icon } from './ui.jsx';
+import { api, requestError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS, MAX_WAIT_S } from '../api.js';
+import { Link } from '../router.jsx';
+import { Badge, Machine, Icon, useNow } from './ui.jsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -48,7 +49,7 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
         const body = {
           model: useModel,
           messages: history.map(({ role, content }) => ({ role, content })),
-          ...(verifiedOnly || seller ? { moonlight: { ...(verifiedOnly ? { verified_only: true } : {}), ...(seller ? { seller } : {}) } } : {}),
+          moonlight: { max_wait_s: MAX_WAIT_S, ...(verifiedOnly ? { verified_only: true } : {}), ...(seller ? { seller } : {}) },
         };
         let final = null;
         await streamChat('/api/playground/chat', body, {
@@ -98,9 +99,10 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
           update(id, (m) => ({ status: m.content ? 'stopped' : 'cancelled' }));
           return;
         }
+        // Before the stream opened (a 503/402/429/5xx response) or in it (an error chunk): either way, say so now.
         update(id, () => ({
           status: e.code === 'no_capacity' ? 'no_capacity' : 'error',
-          error: { message: e.message, code: e.code, status: e.status, suggestions: e.body?.moonlight?.suggestions || [] },
+          error: { message: e.message, code: e.code, status: e.status, retryAfter: e.retryAfter, reason: e.body?.moonlight?.reason, suggestions: e.body?.moonlight?.suggestions || [] },
         }));
       } finally {
         abort.current = null;
@@ -215,6 +217,22 @@ function Queue({ q }) {
   );
 }
 
+// Before the stream opens: the request is on its way to a GPU. Counts up once it takes a while.
+function Finding({ since }) {
+  const now = useNow(1000);
+  const s = Math.round((now - since) / 1000);
+  return (
+    <div className="waiting" role="status">
+      <span className="dots" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </span>
+      Finding a free GPU…{s >= 3 && <span className="num faint"> {s} s</span>}
+    </div>
+  );
+}
+
 function Warming({ warm, model }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -300,16 +318,7 @@ export function Message({ m, onRetry, onSuggest }) {
   const streaming = ['thinking', 'streaming'].includes(m.status);
   return (
     <div className={`msg msg-bot status-${m.status}`}>
-      {m.status === 'waiting' && (
-        <div className="waiting" role="status">
-          <span className="dots" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
-          Finding a free GPU…
-        </div>
-      )}
+      {m.status === 'waiting' && <Finding since={m.t0} />}
       {m.status === 'queued' && m.queue && <Queue q={m.queue} />}
       {m.status === 'dispatched' && m.warm && <Warming warm={m.warm} model={m.model} />}
       <Reasoning text={m.reasoning} active={m.status === 'thinking'} ms={m.meta?.think_ms} />
@@ -337,7 +346,17 @@ export function Message({ m, onRetry, onSuggest }) {
       {m.status === 'no_capacity' && (
         <div className="capacity">
           <p>
-            <b>No GPU is serving <span className="mono">{m.model}</span> right now.</b> Try one of these:
+            <b>{requestError(m.error, m.model)}</b>{' '}
+            {m.error?.reason === 'busy' ? (
+              <>
+                <button type="button" className="link" onClick={() => onRetry(m.id)}>
+                  Try again
+                </button>{' '}
+                or use one of these:
+              </>
+            ) : (
+              'Try one of these:'
+            )}
           </p>
           <div className="chips">
             {(m.error?.suggestions?.length ? m.error.suggestions : AUTO_MODELS.filter((a) => a.kind === 'chat').map((a) => a.id)).map((s) => (
@@ -352,10 +371,16 @@ export function Message({ m, onRetry, onSuggest }) {
         <div className="notice warn">
           <Icon name="flagged" />
           <div>
-            {serviceError(m.error)}{' '}
-            <button type="button" className="link" onClick={() => onRetry(m.id)}>
-              Try again
-            </button>
+            {requestError(m.error, m.model)}{' '}
+            {m.error?.status === 402 ? (
+              <Link to="/me/buy" className="link">
+                See your balance
+              </Link>
+            ) : (
+              <button type="button" className="link" onClick={() => onRetry(m.id)}>
+                Try again
+              </button>
+            )}
           </div>
         </div>
       )}

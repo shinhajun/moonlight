@@ -1,5 +1,5 @@
 // Vite dev-server plugin that answers /api/*, /v1/* and SSE /api/events like the gateway (PROTOCOL.md v0.3).
-// Mock-only chat triggers, for demos and screenshots: put #queue, #warm, #failover or #lost in a message.
+// Mock-only chat triggers, for demos and screenshots: put #queue, #busy, #warm, #failover or #lost in a message.
 import * as w from './world.js';
 import { chatAnswer, embed, reasoningFor, systemoneAnswer, tokens } from './answers.js';
 
@@ -42,7 +42,7 @@ function pickListing(res, body, buyer, kind) {
     const ls = ids.map((id) => w.route(id, filters)).filter(Boolean);
     const best = ls.sort((a, b) => (b.verification.state === 'verified') - (a.verification.state === 'verified') || b.reputation - a.reputation)[0];
     if (best) return best;
-    fail(res, 503, 'no_capacity', `No computer is serving ${body.model} right now.`, { moonlight: { suggestions: [] } }, { 'retry-after': '20' });
+    fail(res, 503, 'no_capacity', `No computer is serving ${body.model} right now.`, { moonlight: { reason: 'no_sellers', suggestions: [] } }, { 'retry-after': '10' });
     return null;
   }
   const meta = w.metaOf(body.model);
@@ -53,7 +53,7 @@ function pickListing(res, body, buyer, kind) {
   if (!l) {
     const similar = w.catalog().filter((m) => m.kind === meta.kind && m.id !== body.model && m.sellers_online > 0).map((m) => m.id).slice(0, 3);
     const alias = Object.keys(AUTO).find((a) => AUTO[a]({ ...meta }));
-    fail(res, 503, 'no_capacity', `No computer is serving ${body.model} right now.`, { moonlight: { suggestions: [...(alias ? [alias] : []), ...similar] } }, { 'retry-after': '20' });
+    fail(res, 503, 'no_capacity', `No computer is serving ${body.model} right now.`, { moonlight: { reason: 'no_sellers', suggestions: [...(alias ? [alias] : []), ...similar] } }, { 'retry-after': '10' });
     return null;
   }
   return l;
@@ -65,7 +65,7 @@ async function chat(req, res) {
   const body = await readJson(req);
   if (!body) return fail(res, 400, 'bad_json', 'Body is not valid JSON.');
   const lastUser = [...(body.messages || [])].reverse().find((m) => m.role === 'user')?.content || '';
-  const trigger = /#(queue|failover|lost|warm)\b/.exec(String(lastUser))?.[1];
+  const trigger = /#(queue|busy|failover|lost|warm)\b/.exec(String(lastUser))?.[1];
   await sleep(120);
   let l = pickListing(res, body, buyer, 'chat');
   if (!l) return;
@@ -98,11 +98,17 @@ async function chat(req, res) {
   const chunk = (delta, extra = {}, finish = null) =>
     !closed && res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model: l.model_id, choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`);
 
-  if (trigger === 'queue') {
+  if (trigger === 'queue' || trigger === 'busy') {
     for (const [pos, eta] of [[3, 9], [2, 6], [1, 3]]) {
       res.write(`: queued position=${pos} eta_s=${eta}\n\n`);
       await sleep(1700);
     }
+  }
+  // Waited max_wait_s in line: the stream is already open, so the 503 comes in-band (as the gateway does).
+  if (trigger === 'busy') {
+    const suggestions = Object.keys(AUTO).filter((a) => a.startsWith('auto/chat') && a !== body.model);
+    res.write(`data: ${JSON.stringify({ error: { message: `Every seller of \`${l.model_id}\` is busy.`, type: 'server_error', code: 'no_capacity' }, moonlight: { reason: 'busy', suggestions } })}\n\n`);
+    return res.end('data: [DONE]\n\n');
   }
   const first = Math.round(node.ttft * (0.8 + Math.random() * 0.5));
   res.write(`: waiting model=${l.model_id} elapsed_s=0\n\n`);

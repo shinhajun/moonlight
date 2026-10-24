@@ -1,7 +1,8 @@
-import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, modelPath } from '../router.jsx';
 import { listOf, useApi, useEvents, usd, int, priceLabel, KINDS } from '../api.js';
 import { Badge, CopyBox, Icon, RollingNumber, useTween, BADGE_COPY } from '../components/ui.jsx';
+import { caption, chipsLit, copyOut } from '../components/gpu/timeline.js';
 import { installCommand, detectOS } from './AddComputer.jsx';
 import { BASE } from '../snippets.js';
 
@@ -25,56 +26,79 @@ function can3D() {
   }
 }
 
-const Still = () => <img className="gpu-still solo" src="/gpu-still.webp" alt="A graphics card" />;
-const smooth = (a, b, x) => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
-
-// Scroll progress through the pinned hero on wide screens with the 3D card; a slow loop otherwise
-// (phones, and the still image, which can't open with scroll anyway).
+// Scroll progress through the pinned hero, eased so wheel steps glide. It writes the CSS variables the copy,
+// caption and glow use, and a ref the 3D scene reads every frame, so scrolling never re-renders React.
 function useHeroProgress(ref, pinned) {
-  const [p, setP] = useState(0);
+  const progress = useRef(0);
   useEffect(() => {
-    const wide = matchMedia('(min-width: 1024px)');
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!pinned) return;
+    const el = ref.current;
+    const sticky = el.firstElementChild;
+    let top = 0;
+    let target = 0;
     let raf = 0;
-    let loop = 0;
-    let t0 = performance.now();
+    let last = 0;
+    let out = false;
+    const write = (p) => {
+      progress.current = p;
+      const c = copyOut(p);
+      el.style.setProperty('--copy', c.toFixed(4));
+      el.style.setProperty('--cap', caption(p).toFixed(4));
+      el.style.setProperty('--lit', chipsLit(p).toFixed(4));
+      if (c > 0.98 !== out) el.classList.toggle('copy-out', (out = c > 0.98));
+    };
+    const step = (now) => {
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
+      const cur = progress.current;
+      const next = Math.abs(target - cur) < 1e-4 ? target : cur + (target - cur) * (1 - Math.exp(-dt * 7));
+      write(next);
+      last = next === target ? 0 : now;
+      raf = next === target ? 0 : requestAnimationFrame(step);
+    };
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      const total = r.height - sticky.offsetHeight;
+      return total > 0 ? Math.min(1, Math.max(0, (top - r.top) / total)) : 0;
+    };
     const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const r = ref.current.getBoundingClientRect();
-        const total = r.height - innerHeight;
-        // Half-percent steps: React skips most scroll frames; the 3D scene eases between steps itself.
-        setP(total > 0 ? Math.round(Math.min(1, Math.max(0, -r.top / total)) * 200) / 200 : 0);
-      });
+      target = read();
+      if (!raf) raf = requestAnimationFrame(step);
     };
-    const tick = (now) => {
-      setP(Math.round(((Math.sin((now - t0) / 2600 - Math.PI / 2) + 1) / 2) * 200) / 200);
-      loop = requestAnimationFrame(tick);
+    const onResize = () => {
+      top = parseFloat(getComputedStyle(sticky).top) || 0;
+      onScroll();
     };
-    const setup = () => {
-      window.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(loop);
-      if (wide.matches && pinned) {
-        window.addEventListener('scroll', onScroll, { passive: true });
-        onScroll();
-      } else if (!reduced) {
-        t0 = performance.now();
-        loop = requestAnimationFrame(tick);
-      } else setP(0.8);
-    };
-    setup();
-    wide.addEventListener('change', setup);
+    top = parseFloat(getComputedStyle(sticky).top) || 0;
+    target = read();
+    write(target);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('scroll', onScroll);
-      wide.removeEventListener('change', setup);
+      window.removeEventListener('resize', onResize);
       cancelAnimationFrame(raf);
-      cancelAnimationFrame(loop);
     };
   }, [ref, pinned]);
-  return p;
+  return progress;
+}
+
+// The middle column's box, as fractions of the pinned screen: where the closed 3D card sits.
+function useRoom(ref, roomRef, on) {
+  const [room, setRoom] = useState(null);
+  useEffect(() => {
+    if (!on) return;
+    const sticky = ref.current.firstElementChild;
+    const measure = () => {
+      const s = sticky.getBoundingClientRect();
+      const r = roomRef.current.getBoundingClientRect();
+      setRoom({ x: (r.left - s.left) / s.width, y: (r.top - s.top) / s.height, w: r.width / s.width, h: r.height / s.height });
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(sticky);
+    ro.observe(roomRef.current);
+    return () => ro.disconnect();
+  }, [ref, roomRef, on]);
+  return room;
 }
 
 const STEPS = [
@@ -83,81 +107,28 @@ const STEPS = [
   ['You earn on every token.', '90% of each request is yours. Pause or reprice anytime.'],
 ];
 
-// An illustration, not live data: a 24 GB card shared by your apps and Moonlight, as a slim strip under the GPU.
-const VramStrip = memo(function VramStrip({ share }) {
-  const TOTAL = 24;
-  const [apps, setApps] = useState(8.6);
-  const [earned, setEarned] = useState(0);
-  const [served, setServed] = useState(0);
-  const [pulse, setPulse] = useState(0);
-  const active = share > 0.15;
-  useEffect(() => {
-    const id = setInterval(() => setApps((a) => Math.min(11.2, Math.max(6.4, a + (Math.random() - 0.5) * 1.1))), 1400);
-    return () => clearInterval(id);
-  }, []);
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => {
-      setServed((n) => n + 1);
-      setEarned((e) => e + 40 + Math.random() * 160);
-      setPulse((x) => x + 1);
-    }, 700);
-    return () => clearInterval(id);
-  }, [active]);
-  const ml = share * (TOTAL - apps - 1.4);
-  const free = TOTAL - apps - ml;
-  const pct = (gb) => `${(gb / TOTAL) * 100}%`;
-  const shown = useTween(earned, 600);
-  return (
-    <div className="vram-strip">
-      <div className="vs-top">
-        <span className="vram-title">
-          <Icon name="gpu" size={14} /> 24 GB GPU
-        </span>
-        <span className="tag">Illustration</span>
-        <span className="vs-earn">
-          <span className="label">Earned</span>
-          <RollingNumber value={usd(Math.round(shown), 6)} className="vs-money" />
-        </span>
-      </div>
-      <div className="vram-bar" role="img" aria-label={`Your apps ${apps.toFixed(1)} GB, Moonlight ${ml.toFixed(1)} GB, free ${free.toFixed(1)} GB`}>
-        <span className="seg seg-apps" style={{ width: pct(apps) }} />
-        <span className="seg seg-ml" style={{ width: pct(ml) }}>
-          {active && <i key={pulse} className="seg-pulse" />}
-        </span>
-      </div>
-      <div className="vs-legend">
-        <span>
-          <i className="dot dot-apps" /> Your apps <b className="num">{apps.toFixed(1)} GB</b>
-        </span>
-        <span>
-          <i className="dot dot-ml" /> Moonlight <b className="num">{ml.toFixed(1)} GB</b>
-        </span>
-        <span>
-          <i className="dot dot-free" /> Free <b className="num">{free.toFixed(1)} GB</b>
-        </span>
-        <span className="vs-req num">{int(served)} req</span>
-      </div>
-    </div>
-  );
-});
-
 function Hero() {
   const ref = useRef(null);
+  const roomRef = useRef(null);
   const show3D = useMemo(can3D, []);
-  const p = useHeroProgress(ref, show3D);
-  const explode = smooth(0.06, 0.7, p);
-  const share = smooth(0.25, 0.75, p);
+  const progress = useHeroProgress(ref, show3D);
+  const room = useRoom(ref, roomRef, show3D);
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
   return (
-    <section className={`hero ${show3D ? 'pinned' : 'static'}`} ref={ref}>
+    <section className={`hero ${show3D ? 'pinned' : 'static'} ${ready ? 'ready' : ''}`} ref={ref}>
       <div className="hero-sticky">
         <div className="hero-bg" aria-hidden>
-          <div className="hero-glow" style={{ opacity: 0.6 + share * 0.4 }} />
+          <div className="hero-glow" />
         </div>
+        {show3D && (
+          <div className="hero-canvas">
+            <Suspense fallback={null}>
+              <GpuStage progress={progress} room={room} onReady={onReady} />
+            </Suspense>
+          </div>
+        )}
         <div className="wrap hero-v">
-          <Link to="/trust" className="pill hero-pill">
-            <Icon name="shield" size={14} /> Every seller is checked with hidden test jobs <Icon name="arrow" size={13} />
-          </Link>
           <div className="hero-side hero-earn">
             <h1 className="hero-half">Earn from your spare GPU.</h1>
             <p>Moonlight rents out the VRAM your own apps aren&apos;t using, even while you work. You keep 90% of every request.</p>
@@ -168,14 +139,8 @@ function Hero() {
             </Link>
           </div>
           <div className="hero-gpu">
-            <div className="stage-wrap">
-              {show3D ? (
-                <Suspense fallback={<Still />}>
-                  <GpuStage progress={explode} load={0.25 + share * 0.75} />
-                </Suspense>
-              ) : (
-                <Still />
-              )}
+            <div className="gpu-room" ref={roomRef}>
+              <img className="gpu-still" src="/gpu-still.webp" alt="A graphics card" />
             </div>
           </div>
           <div className="hero-side hero-use">
@@ -187,11 +152,12 @@ function Hero() {
               Use the API <Icon name="arrow" />
             </Link>
           </div>
-          <div className="hero-vram">
-            <VramStrip share={share} />
-          </div>
-          <p className="hero-line">The marketplace in between: idle VRAM on one side, open-model inference on the other.</p>
         </div>
+        {show3D && (
+          <p className="hero-caption" aria-hidden>
+            <b>VRAM</b>: where the spare room lives.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -201,9 +167,8 @@ function Steps() {
   return (
     <section className="wrap steps-row" aria-label="How it works">
       <ol>
-        {STEPS.map(([title, text], i) => (
+        {STEPS.map(([title, text]) => (
           <li key={title}>
-            <span className="step-n num">0{i + 1}</span>
             <b>{title}</b>
             <p>{text}</p>
           </li>
@@ -230,12 +195,6 @@ function NetworkStats() {
   ];
   return (
     <section className="wrap stats" aria-label="Live network">
-      <div className="stats-head">
-        <span className="livedot live">
-          <i />
-          Live network
-        </span>
-      </div>
       <dl className="stats-grid">
         {items.map(([label, value, note]) => (
           <div key={label} className="stat">
@@ -309,9 +268,7 @@ export default function Landing() {
 
       <section className="wrap halves">
         <article className="half">
-          <p className="eyebrow">
-            <Icon name="gpu" size={14} /> For GPU owners
-          </p>
+          <p className="eyebrow">For GPU owners</p>
           <h2>Your GPU has room to spare.</h2>
           <p className="muted">Install one small program. Moonlight finds the open models you already have and serves them in the VRAM your own apps leave free.</p>
           <ul className="checks">
@@ -320,16 +277,6 @@ export default function Landing() {
             <Check>90% of every request, paid per token</Check>
             <Check>Pause or change your prices anytime</Check>
           </ul>
-          <div className="works">
-            <span className="label">Works with</span>
-            <div className="chips">
-              {['Ollama', 'LM Studio', 'llama.cpp', 'vLLM', 'Jan', 'LocalAI', 'KoboldCpp'].map((r) => (
-                <span key={r} className="tag">
-                  {r}
-                </span>
-              ))}
-            </div>
-          </div>
           <CopyBox code={installCommand(os)} label={os === 'windows' ? 'PowerShell' : 'Terminal'} lang={os === 'windows' ? 'ps1' : 'sh'} compact />
           <div className="row half-cta">
             <Link to="/add" className="btn btn-primary">
@@ -338,9 +285,7 @@ export default function Landing() {
           </div>
         </article>
         <article className="half">
-          <p className="eyebrow">
-            <Icon name="code" size={14} /> For developers
-          </p>
+          <p className="eyebrow">For developers</p>
           <h2>Open models, one API.</h2>
           <p className="muted">Point the OpenAI SDK at Moonlight and pick a model, or let auto/* choose the best GPU that&apos;s free. Pay per token, nothing to provision.</p>
           <ul className="checks">
@@ -363,9 +308,6 @@ export default function Landing() {
 
       <section className="wrap verify">
         <div className="verify-copy">
-          <p className="eyebrow">
-            <Icon name="shield" size={14} /> Verification
-          </p>
           <h2>Every seller gets checked.</h2>
           <p className="muted">Hidden test jobs look like ordinary requests, so a seller can&apos;t tell a check from a customer. Answers are compared with a reference GPU or with other sellers.</p>
           <div className="row">
