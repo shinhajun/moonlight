@@ -1,6 +1,7 @@
 // Web API (/api/*): accounts and sessions, keys, device pairing, nodes and listings, catalog, stats, events.
 import crypto from 'node:crypto';
 import { bearer, cookie, readJson, send } from './http.js';
+import { TokenError, createFirebaseVerifier } from './google.js';
 import { clientIp, createLimiter } from './ratelimit.js';
 import { licensePolicy, sanitizePrice } from './hub.js';
 import { marketPrice, paramsB } from './policy.js';
@@ -23,6 +24,17 @@ export function createApi(ctx) {
   const { config, db, store, hub, catalog, bus } = ctx;
   const limiter = createLimiter();
   const creditDay = new Map(); // ip -> UTC day its demo credit was handed out
+  const verifyGoogle = createFirebaseVerifier({ projectId: config.firebaseProjectId, fetchCerts: config.fetchGoogleCerts });
+
+  // Demo credit for a new account: the first one per IP per UTC day.
+  function newAccountCredit(req) {
+    const ip = clientIp(req);
+    const today = new Date().toISOString().slice(0, 10);
+    if (creditDay.get(ip) === today) return 0;
+    creditDay.set(ip, today);
+    return config.demoCredit;
+  }
+  const creditFields = (credit) => ({ demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) });
 
   function limit(req, name) {
     const [max, windowMs] = LIMITS[name];
@@ -62,22 +74,54 @@ export function createApi(ctx) {
     if (!EMAIL.test(email) || email.length > 200) throw errors.badRequest('Enter a valid email address.');
     if (password.length < 8 || password.length > 200) throw errors.badRequest('Use a password of at least 8 characters.');
     if (store.accountByEmail(email)) throw new ApiError(409, 'invalid_request_error', 'email_taken', 'An account with this email already exists. Sign in instead.');
-    const ip = clientIp(req);
-    const today = new Date().toISOString().slice(0, 10);
-    const credit = creditDay.get(ip) === today ? 0 : config.demoCredit;
-    if (credit) creditDay.set(ip, today);
+    const credit = newAccountCredit(req);
     const a = await store.signup({ email, password, name: name.slice(0, 60), credit });
     setSession(req, res, a.id);
-    send(res, 201, { account: accountView(a), demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) });
+    send(res, 201, { account: accountView(a), ...creditFields(credit) });
   }
 
   async function login(req, res) {
     limit(req, 'login');
     const b = await readJson(req);
-    const a = await store.login(String(b.email || '').trim().toLowerCase(), String(b.password || ''));
+    const email = String(b.email || '').trim().toLowerCase();
+    const found = store.accountByEmail(email);
+    if (found?.google_sub && !found.password_hash) {
+      throw new ApiError(401, 'authentication_error', 'google_account', 'This account uses Google sign-in.');
+    }
+    const a = await store.login(email, String(b.password || ''));
     if (!a) throw new ApiError(401, 'authentication_error', 'bad_credentials', 'Wrong email or password.');
     setSession(req, res, a.id);
     send(res, 200, { account: accountView(a) });
+  }
+
+  // Firebase ID token → the account with that Google identity, else the one with that verified email (now
+  // linked), else a new password-less account.
+  async function google(req, res) {
+    limit(req, 'login');
+    const b = await readJson(req);
+    let claims;
+    try {
+      claims = await verifyGoogle(b.id_token);
+    } catch (err) {
+      if (!(err instanceof TokenError)) throw err;
+      throw new ApiError(401, 'authentication_error', 'invalid_token', `Google sign-in failed: ${err.message}.`);
+    }
+    const email = claims.email.trim().toLowerCase();
+    let a = store.accountByGoogle(claims.sub);
+    if (!a && (a = store.accountByEmail(email))) {
+      if (a.google_sub) throw new ApiError(409, 'invalid_request_error', 'email_taken', 'This email is linked to a different Google account.');
+      a = store.linkGoogle(a.id, claims.sub);
+    }
+    if (a) {
+      setSession(req, res, a.id);
+      return send(res, 200, { account: accountView(a) });
+    }
+    limit(req, 'signup');
+    const credit = newAccountCredit(req);
+    const name = (typeof claims.name === 'string' && claims.name.trim()) || email.split('@')[0];
+    a = store.insertAccount({ email, name: name.slice(0, 60), googleSub: claims.sub, credit });
+    setSession(req, res, a.id);
+    send(res, 201, { account: accountView(a), ...creditFields(credit) });
   }
 
   function logout(req, res) {
@@ -389,7 +433,7 @@ export function createApi(ctx) {
   }
 
   return {
-    who, need, signup, login, logout, seedAccount, me, createKey, deleteKey,
+    who, need, signup, login, google, logout, seedAccount, me, createKey, deleteKey,
     pair, pairPoll, pairInfo, pairApprove, myNodes, patchListing, togglePause,
     models, model, stats, events, adminListing, adminVerify,
   };

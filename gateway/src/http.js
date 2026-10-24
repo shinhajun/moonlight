@@ -135,6 +135,8 @@ export function serveStatic(config, req, res, pathname) {
   if (file !== root && !file.startsWith(root + path.sep)) return send(res, 400, { error: { message: 'Bad path.' } });
   fs.stat(file, (err, st) => {
     if (!err && st.isDirectory()) file = path.join(file, 'index.html');
+    // A missing hashed bundle is a 404, not the app shell (which a browser would fail to run as a script).
+    else if (err && pathname.startsWith('/assets/')) return send(res, 404, { error: { message: 'Not found.' } });
     else if (err) file = path.join(root, 'index.html');
     fs.stat(file, (err2, st2) => {
       if (err2 || !st2.isFile()) {

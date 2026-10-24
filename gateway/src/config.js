@@ -26,6 +26,9 @@ export function loadConfig(overrides = {}) {
     publicUrl: env.MOONLIGHT_PUBLIC_URL || 'https://moonlight.hajunshin.com',
     // Seller tokens of operator-owned reference nodes (the agent's --trusted). Their hello sets reference digests.
     trustedTokens: list(env.MOONLIGHT_TRUSTED_TOKENS),
+    // Google sign-in: Firebase Auth ID tokens from this project. fetchGoogleCerts is replaced in tests.
+    firebaseProjectId: env.MOONLIGHT_FIREBASE_PROJECT || 'vada-so',
+    fetchGoogleCerts: undefined,
     adminToken: env.MOONLIGHT_ADMIN_TOKEN || '',
     fixedDigests: FIXED_DIGESTS,
     // Accepted digests per public model: the Ollama registry / Hugging Face LFS digest (cached), every digest

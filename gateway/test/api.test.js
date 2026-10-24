@@ -193,6 +193,7 @@ test('static web app with SPA fallback, agent and release downloads', async (t) 
   }
   const asset = await g.get('/assets/app.js');
   assert.match(asset.headers['cache-control'], /immutable/);
+  assert.equal((await g.get('/assets/index-old.js')).status, 404);
   assert.equal((await g.get('/agent.mjs')).text, '// agent');
   const sh = await g.get('/install.sh');
   assert.match(sh.headers['content-type'], /shellscript/);
