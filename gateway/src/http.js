@@ -112,7 +112,11 @@ export function serveDownloads(config, req, res, pathname) {
     return true;
   }
   const m = RELEASE.exec(pathname);
-  if (!m) return false;
+  if (!m) {
+    if (!pathname.startsWith('/dl/') && !pathname.startsWith('/install.')) return false;
+    send(res, 404, { error: { message: 'No such download.', type: 'invalid_request_error', code: 'not_found' } });
+    return true;
+  }
   const name = m[1] || m[2];
   const type = m[1] ? MIME[path.extname(name)] : 'application/octet-stream';
   const extra = m[2] ? { 'content-disposition': `attachment; filename="${name}"` } : {};

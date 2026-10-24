@@ -136,10 +136,12 @@ export function createGateway(config) {
     async close() {
       ctx.verifier.stop();
       ctx.scheduler.close();
-      ctx.hub.close();
+      await ctx.hub.close();
+      ctx.closed = true;
       wss.close();
       server.closeAllConnections?.();
       await new Promise((r) => server.close(r));
+      await new Promise((r) => setImmediate(r));
       db.close();
     },
   };

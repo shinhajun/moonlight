@@ -5,8 +5,9 @@ import { JobError } from './hub.js';
 import { now } from './util.js';
 
 export function createScheduler(ctx) {
-  const queues = new Map(); // key (requested model id) -> {waiters: [], last: buyerId}
-  const ticker = setInterval(() => pump(), 2000);
+  const queues = new Map(); // key (requested model id) -> {waiters: []}
+  const lastBuyer = new Map(); // key -> buyer served most recently, queued or not
+  const ticker = setInterval(() => !ctx.closed && pump(), 2000);
   ticker.unref();
 
   // Waiters in service order: round-robin across buyers starting after the last one served.
@@ -17,7 +18,7 @@ export function createScheduler(ctx) {
       byBuyer.get(w.buyerId).push(w);
     }
     const buyers = [...byBuyer.keys()];
-    const start = buyers.indexOf(q.last) + 1;
+    const start = buyers.indexOf(lastBuyer.get(q.key)) + 1;
     const lists = [...buyers.slice(start), ...buyers.slice(0, start)].map((b) => byBuyer.get(b));
     const order = [];
     for (let i = 0; order.length < q.waiters.length; i++) for (const l of lists) if (l[i]) order.push(l[i]);
@@ -39,8 +40,9 @@ export function createScheduler(ctx) {
     ctx.bus.publish('queue', { ts: now(), model_id: key, depth: n });
   }
 
-  function hand(w, cand) {
+  function hand(key, w, cand) {
     cand.conn.reserved++;
+    lastBuyer.set(key, w.buyerId);
     w.resolve({ cand, queuedMs: now() - w.at });
   }
 
@@ -51,9 +53,8 @@ export function createScheduler(ctx) {
         for (const w of fairOrder(q)) {
           const cand = w.find();
           if (!cand) continue;
-          q.last = w.buyerId;
           remove(key, w);
-          hand(w, cand);
+          hand(key, w, cand);
           served = true;
           break;
         }
@@ -69,6 +70,7 @@ export function createScheduler(ctx) {
       const cand = find();
       if (cand) {
         cand.conn.reserved++;
+        lastBuyer.set(key, buyerId);
         return Promise.resolve({ cand, queuedMs: 0 });
       }
     }
@@ -85,7 +87,7 @@ export function createScheduler(ctx) {
         remove(key, w);
         reject(new JobError('cancelled'));
       }, { once: true });
-      if (!queues.has(key)) queues.set(key, { waiters: [], last: null });
+      if (!queues.has(key)) queues.set(key, { key, waiters: [] });
       queues.get(key).waiters.push(w);
       depth(key);
       onQueued?.(fairOrder(queues.get(key)).indexOf(w) + 1);
