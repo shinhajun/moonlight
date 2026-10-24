@@ -25,6 +25,8 @@ export async function startGateway(overrides = {}) {
   fs.mkdirSync(path.join(dir, 'web/assets'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'web/index.html'), '<!doctype html><title>Moonlight web</title>');
   fs.writeFileSync(path.join(dir, 'web/assets/app.js'), 'console.log(1)');
+  fs.writeFileSync(path.join(dir, 'web/assets/moon-abc123.glb'), 'glTF');
+  fs.writeFileSync(path.join(dir, 'web/assets/draco_decoder.wasm'), '\0asm');
   fs.writeFileSync(path.join(dir, 'agent.mjs'), '// agent');
   fs.mkdirSync(path.join(dir, 'release'));
   fs.writeFileSync(path.join(dir, 'release/install.sh'), '#!/bin/sh\necho install');

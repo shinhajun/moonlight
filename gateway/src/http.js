@@ -9,6 +9,8 @@ const MIME = {
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.txt': 'text/plain; charset=utf-8',
   '.webmanifest': 'application/manifest+json', '.sh': 'text/x-shellscript; charset=utf-8', '.ps1': 'text/plain; charset=utf-8',
+  '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.wasm': 'application/wasm',
+  '.ktx2': 'image/ktx2', '.hdr': 'image/vnd.radiance', '.ttf': 'font/ttf', '.mp4': 'video/mp4', '.webm': 'video/webm', '.avif': 'image/avif',
 };
 
 export function send(res, status, body, headers = {}) {
