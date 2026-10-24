@@ -82,14 +82,32 @@ Rules:
 
 - **Choosing a listing:** The candidates are live listings of the requested `model_id` that pass the buyer's filters. Each gets `score = w_price·price + w_lat·p50_latency + w_load·inflight − w_rep·reputation`, and the lowest score wins.
 - **Retries:** If a node errors or times out before its first chunk, the gateway retries the next candidate. The buyer never sees that.
-- **Mid-stream failover:** If a node drops after streaming has started, the gateway re-issues the job to the next candidate with the partial output appended as a trailing `assistant` message (prefill) and keeps streaming to the buyer seamlessly. The agent worker confirms that Ollama continues a trailing assistant message. If it doesn't, fall back to restarting from scratch and emit nothing duplicated.
+- **Mid-stream failover:** If a node drops after streaming has started, the gateway re-issues the job to the next candidate with the partial output appended as a trailing `assistant` message (prefill) and keeps streaming to the buyer seamlessly.
+  - Some models continue from the prefill (qwen2.5, qwen3.5 with reasoning off). Others restart from scratch (gemma4, glm-4.7-flash).
+  - So the gateway buffers the new node's output until it either diverges from the already-sent partial text or passes it, drops any repeated prefix, and forwards only new text. The buyer never sees duplicated text.
 
 ## Verification
 
-- **Digest check at `hello`:** A public listing whose digest differs from the catalog reference is rejected (`reason: "digest_mismatch"`).
+- **Digest check at `hello`:** Each public tag has a *set* of accepted digests, because Ollama tags are mutable and republished tags change digest. The set is:
+  - the registry's current manifest digest: `sha256` of `GET https://registry.ollama.ai/v2/library/<name>/manifests/<tag>`, fetched and cached for 1 h
+  - every digest a trusted node has reported for that tag
+  - for Laya, the sha256 of `model.safetensors`:
+    - `laya-base` `891102d372688fc2a094dac56a384bc537b87c63f21f9f3dac0be2b7cbc8d86c`
+    - `laya-multilingual` `9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204`
+
+  A digest outside the set is rejected (`reason: "digest_mismatch"`). Digests only prove a consistent claim; a cheater can report the real digest. The behavior checks below are the real proof.
 - **Reference nodes:** These are operator-owned agents started with `--trusted`, in the demo the vada-ai server. They serve normal traffic and also answer verification replays.
 - **Decision models:** The gateway re-runs a sample of real buyer jobs (default 10%) on a reference node. It passes if `max |Δp| ≤ 0.05` across all answers.
-- **Chat models:** The gateway sends canary jobs at random times. These are generated prompts with `temperature:0`, `seed:42`, and `max_tokens:48`. Each answer is compared to the reference node's answer for the same canary using a token-level similarity score; it passes at ≥ 0.85, a tolerance chosen because GPUs differ.
+- **Chat models (teacher-forced next-word agreement):** Free generation diverges across hardware: honest CPU vs GPU averaged only 0.66 similarity. So the gateway sends canary jobs at random times instead, built like this:
+  1. Take a canary prompt and the reference node's greedy answer for it, with `temperature:0`, `seed:42`, and `reasoning_effort:"none"`.
+  2. At about 6 word boundaries in that answer, send the prompt plus the reference prefix as a trailing `assistant` message (prefill), with `max_tokens:4`.
+  3. Compare the first next word with the reference's next word.
+  4. Agreement across the boundaries is the score. It passes at ≥ 0.85.
+
+  Measured: self 0.97, CPU vs GPU 0.94, a 0.5b model serving for 3b 0.69. Canary jobs look like ordinary short buyer jobs.
+- **Thinking models** (qwen3.5, gemma4, glm-4.7-flash) put output into `delta.reasoning`:
+  - Canaries always send `reasoning_effort:"none"`.
+  - Metering counts reasoning tokens as output.
 - **Private models:** These can't be compared to a reference. Instead, the gateway runs a consistency probe (the same canary twice gives the same answer) and tracks latency and uptime. The badge reads "Consistent", not "Verified".
 - **States per listing:**
   - `new`: fewer than 3 checks
@@ -137,5 +155,6 @@ node agent.mjs --token ml_st_... [--gateway wss://moonlight.hajunshin.com/agent]
 ## laya-runner
 
 - `python -m laya_runner` (uv-managed) serves `POST /v1/systemone` on `:8765`. It loads `convaiinnovations/laya` from Hugging Face on CPU, MPS, or CUDA.
-- `GET /health` returns `{model_id, digest, device}`.
+- `GET /health` returns `{model_id, digest, device, models:[{model_id, digest, kind, private}]}`. The top-level fields describe the primary model; `models` lists everything the runner serves.
+- Laya returns `output_tokens: 0`. Jev rejects `score` criteria given as a dict (422); criteria must be a list, and the runner accepts the same.
 - It also serves a private fine-tuned checkpoint for the demo (`hajun/support-triage`) if one is built.
