@@ -40,6 +40,7 @@ export function loadConfig(overrides = {}) {
 
     feeBps: 1000,
     demoCredit: 5_000_000,
+    maxKeysPerAccount: 20,
     // micro-USD per million tokens, or per call
     maxPrice: { per_m: 100_000_000, per_call: 1_000_000 },
     usageTolerance: 0.2,

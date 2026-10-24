@@ -163,6 +163,9 @@ export function openDb(file) {
   // v0.4: Google sign-in. ALTER can't add a UNIQUE column, so the uniqueness lives in an index.
   if (!raw.prepare('PRAGMA table_info(accounts)').all().some((c) => c.name === 'google_sub')) raw.exec('ALTER TABLE accounts ADD COLUMN google_sub TEXT');
   raw.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_google_sub ON accounts (google_sub)');
+  // Per-key usage: which API key made each request (null for the web playground).
+  if (!raw.prepare('PRAGMA table_info(requests)').all().some((c) => c.name === 'key_id')) raw.exec('ALTER TABLE requests ADD COLUMN key_id TEXT');
+  raw.exec('CREATE INDEX IF NOT EXISTS requests_key ON requests (key_id)');
   const cache = new Map();
   const stmt = (sql) => {
     let s = cache.get(sql);

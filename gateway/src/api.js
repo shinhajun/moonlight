@@ -172,11 +172,25 @@ export function createApi(ctx) {
     });
   }
 
+  const keyName = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 60) : null);
+
   async function createKey(req, res) {
     const a = need(req);
     const b = await readJson(req);
-    const { key, secret } = store.createKey(a.id, 'api', typeof b.name === 'string' ? b.name.slice(0, 60) : null);
+    if (store.countKeys(a.id) >= config.maxKeysPerAccount) {
+      throw new ApiError(409, 'invalid_request_error', 'too_many_keys', `You can have up to ${config.maxKeysPerAccount} API keys. Delete one you no longer use first.`);
+    }
+    const { key, secret } = store.createKey(a.id, 'api', keyName(b.name));
     send(res, 201, { key, secret });
+  }
+
+  // Another account's key id is "not found", same as a missing one, so ids don't leak.
+  async function renameKey(req, res, { id }) {
+    const a = need(req);
+    const b = await readJson(req);
+    if (typeof b.name !== 'string') throw errors.badRequest('`name` must be a string.');
+    if (!store.renameKey(a.id, id, keyName(b.name))) throw errors.notFound('No such key.');
+    send(res, 200, { key: store.keyOf(a.id, id) });
   }
 
   function deleteKey(req, res, { id }) {
@@ -435,7 +449,7 @@ export function createApi(ctx) {
   }
 
   return {
-    who, need, signup, login, google, logout, seedAccount, me, createKey, deleteKey,
+    who, need, signup, login, google, logout, seedAccount, me, createKey, renameKey, deleteKey,
     pair, pairPoll, pairInfo, pairApprove, myNodes, patchListing, togglePause,
     models, model, stats, events, adminListing, adminVerify,
   };
