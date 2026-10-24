@@ -358,7 +358,7 @@ Google sign-in goes through Firebase Auth in GCP project `vada-so`. Its Google p
   The response is the same as login (`{account}`, plus `demo_credit_microusd` and `notice?` when the account is new) and sets the `ml_session` cookie. The same per-IP limits and once-a-day demo credit apply.
 - **Signed-out behavior:** No page embeds an auth form. Pages that need an account redirect to `/login?next=<path>`, and login returns there afterwards:
   - `/me/*`
-  - `/developers` key actions
+  - `/docs` key actions (formerly `/developers`, which redirects)
   - `/pair/:code`, which keeps the code
   - sending a chat message
 
