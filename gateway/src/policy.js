@@ -3,13 +3,13 @@
 // Uncensored / abliterated / "heretic" variants are never listed.
 export const BANNED_MODEL = /abliterat|heretic|uncensor|jailbr[eo]ak/i;
 
-// Checked first: any of these makes a license non-commercial or research-only.
-const NC_LICENSE = /non[- ]?commercial|\bnc\b|-nc(-|$)|research[- ](only|license)|research use|mnpl|non[- ]production|c4ai|command[- ]?r/i;
+// Checked first: any of these makes a license non-commercial or research-only (qwen-research, MRL, MNPL, CC-BY-NC…).
+const NC_LICENSE = /non[- ]?commercial|\bnc\b|-nc(-|$)|\bresearch\b|\bmrl\b|mnpl|non[- ]production|c4ai|command[- ]?r/i;
 const PERMISSIVE_LICENSE = new RegExp(
   [
-    'apache', '\\bmit\\b', '\\bbsd\\b', 'bsd-', 'isc', 'mpl-?2', 'unlicense', 'cc0', 'cc-by-4', 'cc-by-sa', 'creative commons attribution 4',
+    'apache', '\\bmit\\b', '\\bbsd\\b', 'bsd-', '\\bisc\\b', 'mpl-?2', 'unlicense', 'cc0', 'cc-by-4', 'cc-by-sa', 'creative commons attribution 4',
     'llama ?[234]', 'llama[23]\\.\\d', 'llama[- ]?\\d', 'gemma', 'qwen', 'tongyi qianwen', 'deepseek', 'openrail', 'glm-4', 'falcon',
-    'nvidia open model', '\\bphi\\b', 'granite', 'olmo', 'smollm', 'mistral ai.*apache',
+    'nvidia[- ]open[- ]model', '\\bphi\\b', 'granite', 'olmo', 'smollm', '\\bgpl', 'lgpl', 'agpl', '\\brail\\b',
   ].join('|'),
   'i',
 );

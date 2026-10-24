@@ -107,6 +107,7 @@ export function licensePolicy(l, { attested, trusted }) {
 export function createHub(ctx) {
   const { config, db, store, bus } = ctx;
   const conns = new Map(); // node_id -> conn (online only)
+  const sockets = new Set(); // every attached socket, for shutdown
   let pumpQueued = false;
 
   const log = (s) => config.log?.(s);
@@ -312,7 +313,11 @@ export function createHub(ctx) {
       if (!msg || typeof msg.t !== 'string') return;
       Promise.resolve(onFrame(conn, msg)).catch((err) => log(`agent frame ${msg.t} failed: ${err.stack || err}`));
     });
-    ws.on('close', () => onClose(conn));
+    sockets.add(ws);
+    ws.on('close', () => {
+      sockets.delete(ws);
+      onClose(conn);
+    });
     ws.on('error', () => {});
   }
 
@@ -322,7 +327,7 @@ export function createHub(ctx) {
     pumpQueued = true;
     setImmediate(() => {
       pumpQueued = false;
-      ctx.scheduler?.pump();
+      if (!ctx.closed) ctx.scheduler?.pump();
     });
   }
 
@@ -382,8 +387,12 @@ export function createHub(ctx) {
     refreshListing,
     pushStats,
     checkCounts,
+    // Resolves once every socket's close handler has run (they still write last_seen).
     close() {
-      for (const c of conns.values()) c.ws.terminate();
+      const all = [...sockets];
+      const closed = all.map((ws) => new Promise((r) => ws.once('close', r)));
+      for (const ws of all) ws.terminate();
+      return Promise.race([Promise.all(closed), new Promise((r) => setTimeout(r, 1000))]);
     },
   };
   return api;

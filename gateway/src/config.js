@@ -59,13 +59,14 @@ export function loadConfig(overrides = {}) {
     verify: {
       rate: num(env.MOONLIGHT_VERIFY_RATE, 0.1), // per-listing default; admin can set 1.0 for the demo
       canaryTickMs: num(env.MOONLIGHT_CANARY_TICK_MS, 60_000), // 0 disables scheduled canaries
-      chatThreshold: 0.85, // teacher-forced next-word agreement: 7 of 8 boundaries
-      boundaries: 8, // word boundaries probed per chat canary
+      chatThreshold: 0.75, // teacher-forced agreement: ≥ 6 of 8 boundaries
+      boundaries: 8, // word boundaries probed per chat canary (never the first one)
+      compareWords: 3, // a boundary agrees only if the first 3 words of both continuations match
       consistencyThreshold: 0.85, // token similarity of the same canary twice (private models)
       decisionMaxDelta: 0.05,
       embeddingMinCosine: 0.99,
       canary: { temperature: 0, seed: 42, max_tokens: 48, reasoning_effort: 'none' },
-      probeMaxTokens: 4,
+      probeMaxTokens: 8,
     },
   };
   return {

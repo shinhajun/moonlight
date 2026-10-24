@@ -49,13 +49,12 @@ function decisionCanary(modelId) {
   };
 }
 
-// First word of a continuation, case- and punctuation-insensitive.
-export function firstWord(text) {
-  const w = (text || '').trim().split(/\s+/)[0].toLowerCase();
-  return w.replace(/^\p{P}+|\p{P}+$/gu, '') || w;
+// The first n words of a continuation, lowercased, as one comparable string.
+export function firstWords(text, n) {
+  return ((text || '').toLowerCase().match(/\w+|[^\w\s]/g) || []).slice(0, n).join(' ');
 }
 
-// The word at least two voters agree on and no other word ties; null if there is none.
+// The answer at least two voters agree on and no other answer ties; null if there is none.
 export function majority(words) {
   const counts = new Map();
   for (const w of words) if (w != null) counts.set(w, (counts.get(w) || 0) + 1);
@@ -167,9 +166,10 @@ export function createVerifier(ctx) {
       return r.content || r.reasoning;
     });
 
-  // Teacher-forced next-word agreement: the reference's greedy answer is cut at word boundaries and each
-  // prefix is sent as a trailing assistant message to the target and the reference(s); their next words
-  // must agree. Works whether the model continues a prefill or restarts.
+  // Teacher-forced agreement: the reference's greedy answer is cut at word boundaries (never the first) and
+  // each prefix is sent as a trailing assistant message to the target and the reference(s); the first
+  // compareWords words of their continuations must match. Works whether the model continues a prefill or
+  // restarts. A small model of the same family guesses one next word too well, hence three.
   async function chatCheck(listing, conn, p) {
     const base = { model: listing.model_id, messages: [{ role: 'user', content: canaryPrompt() }], ...V.canary };
     if (p.method === 'consistency') {
@@ -179,15 +179,18 @@ export function createVerifier(ctx) {
       return { method: 'consistency', metric: 'match', score, threshold: V.consistencyThreshold, passed: score >= V.consistencyThreshold };
     }
     const answer = await chat(p.refs[0], listing.model_id, base);
+    // ends[k] is where word k ends; boundary k sends words 0..k and asks for what follows. k = 0 is skipped.
     const ends = [...answer.matchAll(/\S+/g)].map((m) => m.index + m[0].length);
-    if (ends.length < 4) return null;
-    const n = Math.min(V.boundaries, ends.length - 1);
-    const cuts = [...new Set(Array.from({ length: n }, (_, i) => Math.floor(((i + 0.5) * (ends.length - 1)) / n)))];
+    if (ends.length < 6) return null;
+    const span = ends.length - 2; // boundaries 1 .. ends.length - 2 leave at least one word to predict
+    const n = Math.min(V.boundaries, span);
+    const cuts = [...new Set(Array.from({ length: n }, (_, i) => 1 + Math.floor(((i + 0.5) * span) / n)))];
+    const words = (text) => firstWords(text, V.compareWords);
     let agree = 0;
     let compared = 0;
     for (const k of cuts) {
       const probe = { ...base, messages: [...base.messages, { role: 'assistant', content: answer.slice(0, ends[k]) }], max_tokens: V.probeMaxTokens };
-      const [mine, ...theirs] = await Promise.all([conn, ...p.refs].map((c) => chat(c, listing.model_id, probe).then(firstWord, () => null)));
+      const [mine, ...theirs] = await Promise.all([conn, ...p.refs].map((c) => chat(c, listing.model_id, probe).then(words, () => null)));
       const expected = p.method === 'peer' ? majority(theirs) : theirs[0];
       if (mine == null || expected == null) continue;
       compared++;
@@ -282,7 +285,7 @@ export function createVerifier(ctx) {
 
   function tick() {
     for (const conn of hub.conns.values()) {
-      if (conn.trusted) continue;
+      if (conn.trusted || conn.paused || conn.draining) continue;
       for (const lid of conn.listings.values()) {
         const l = store.listing(lid);
         if (l.paused || Math.random() >= rateOf(l)) continue;
