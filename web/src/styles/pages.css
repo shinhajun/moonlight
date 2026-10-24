@@ -43,20 +43,20 @@
 }
 
 /* ================================================================ LANDING */
-/* Symmetric hero: Earn | standing GPU | Use. Pinned only while the 3D card tracks scroll. */
+/* Symmetric hero: Earn | standing GPU | Use. With the 3D card it pins for three screens of scroll while the
+   card turns and comes apart; the page writes --copy, --cap and --lit (0..1) as it goes. */
 .hero {
+  --nav-h: 60px; /* the masthead's height: the pinned screen sits right under it */
   position: relative;
 }
 .hero.pinned {
-  height: calc(220vh - 60px);
+  height: calc(400vh - var(--nav-h));
 }
 .hero-sticky {
   position: sticky;
-  top: 60px;
-  height: calc(100vh - 60px);
-  min-height: 680px;
-  display: grid;
-  align-items: center;
+  top: var(--nav-h);
+  height: calc(100vh - var(--nav-h));
+  min-height: 600px;
   overflow: hidden;
 }
 .hero.static .hero-sticky {
@@ -75,37 +75,50 @@
 .hero-glow {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: 48%;
   width: min(760px, 70vw);
   aspect-ratio: 1;
   translate: -50% -50%;
   border-radius: 50%;
   background: radial-gradient(closest-side, var(--accent-glow), transparent);
   filter: blur(40px);
-  transition: opacity 0.6s var(--ease-out);
+  opacity: calc(0.6 + 0.4 * var(--lit, 0));
+}
+/* The canvas covers the whole pinned screen so the opened card can use all of it. */
+.hero-canvas,
+.gpu-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.gpu-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.8s var(--ease-out);
+}
+.hero.ready .gpu-stage canvas {
+  opacity: 1;
 }
 .hero-v {
   position: relative;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
   grid-template-areas:
-    'pill pill pill'
     'earn gpu use'
-    'earnc gpu usec'
-    '. vram .'
-    'line line line';
-  grid-template-rows: auto 1fr 1fr auto auto;
+    'earnc gpu usec';
+  grid-template-rows: 1fr 1fr;
   column-gap: var(--s-5);
-  align-items: center;
 }
-.hero-pill {
-  grid-area: pill;
-  justify-self: center;
-  margin-bottom: var(--s-3);
-}
-.hero-side {
+.hero-side,
+.hero-cta {
   position: relative;
   z-index: 2;
+}
+.hero-side {
   display: grid;
   gap: var(--s-3);
   align-self: end;
@@ -138,10 +151,8 @@
   color: var(--fg-2);
 }
 .hero-cta {
-  position: relative;
-  z-index: 2;
   align-self: start;
-  padding-top: var(--s-4);
+  padding-top: var(--s-5);
 }
 .hero-cta-earn {
   grid-area: earnc;
@@ -151,152 +162,59 @@
   grid-area: usec;
   justify-self: start;
 }
+/* The copy steps aside as the card opens, and comes back on the way up. */
+.hero-earn,
+.hero-cta-earn {
+  opacity: calc(1 - var(--copy, 0));
+  translate: calc(var(--copy, 0) * -56px) 0;
+}
+.hero-use,
+.hero-cta-use {
+  opacity: calc(1 - var(--copy, 0));
+  translate: calc(var(--copy, 0) * 56px) 0;
+}
+.hero.copy-out .hero-side,
+.hero.copy-out .hero-cta {
+  visibility: hidden;
+}
+/* The box the closed card fills; the 3D scene measures it. The still has 6% of air above and below the card. */
 .hero-gpu {
   grid-area: gpu;
   position: relative;
-  align-self: stretch;
 }
-.stage-wrap {
-  position: relative;
-  height: min(72vh, 690px);
-  min-height: 440px;
-  pointer-events: none;
-}
-/* The canvas is wider than its column so the opened stack has room; the side copy sits above it. */
-.gpu-stage {
+.gpu-room {
   position: absolute;
-  inset: 0 -38%;
-}
-.gpu-stage canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  transition: opacity 0.8s var(--ease-out);
-}
-.gpu-stage.ready canvas {
-  opacity: 1;
+  inset: 8% 0;
 }
 .gpu-still {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  top: -6%;
+  left: 50%;
+  height: 112%;
+  width: auto;
+  max-width: none;
+  translate: -50% 0;
   transition: opacity 0.8s var(--ease-out);
 }
-.gpu-stage.ready .gpu-still {
+.hero.ready .gpu-still {
   opacity: 0;
 }
-.gpu-still.solo {
-  inset: 0 -38%;
-  width: 176%;
-}
-/* Tucked into the shadow area under the card. */
-.hero-vram {
-  grid-area: vram;
-  position: relative;
+.hero-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3%;
   z-index: 2;
-  justify-self: center;
-  width: min(460px, 100%);
-  margin-top: -40px;
-}
-.hero-line {
-  grid-area: line;
-  justify-self: center;
-  margin-top: var(--s-3);
-  font-size: var(--text-sm);
-  color: var(--fg-3);
   text-align: center;
-}
-.vram-strip {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--line-2);
-  border-radius: 14px;
-  background: var(--panel);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  box-shadow: var(--shadow), var(--highlight);
-}
-.vs-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.vram-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   font-size: var(--text-sm);
-  font-weight: 500;
+  color: var(--fg-2);
+  opacity: var(--cap, 0);
+  translate: 0 calc((1 - var(--cap, 0)) * 8px);
+  pointer-events: none;
 }
-.vs-earn {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-left: auto;
-}
-.vs-money {
-  font-size: 1.05rem;
+.hero-caption b {
   font-weight: 500;
   color: var(--accent-text);
-}
-.vs-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  font-size: var(--text-xs);
-  color: var(--fg-3);
-}
-.vs-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.vs-legend b {
-  font-weight: 500;
-  color: var(--fg-2);
-}
-.vs-req {
-  margin-left: auto;
-}
-.vram-bar {
-  display: flex;
-  height: 10px;
-  border-radius: 5px;
-  background: color-mix(in oklch, var(--fg) 7%, transparent);
-  overflow: hidden;
-}
-.seg {
-  position: relative;
-  height: 100%;
-  transition: width 0.7s var(--ease-out);
-}
-.seg-apps {
-  background: repeating-linear-gradient(-45deg, var(--fg-3) 0 4px, color-mix(in oklch, var(--fg-3) 70%, transparent) 4px 8px);
-}
-.seg-ml {
-  overflow: hidden;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 16px var(--accent-glow);
-}
-.seg-pulse {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -30%;
-  width: 30%;
-  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.7), transparent);
-  animation: seg-pulse 0.7s var(--ease-in-out) forwards;
-}
-@keyframes seg-pulse {
-  to {
-    left: 110%;
-  }
 }
 .dot {
   width: 8px;
@@ -341,37 +259,26 @@
   font-size: var(--text-sm);
   color: var(--fg-3);
 }
-.step-n {
-  font-size: var(--text-xs);
-  color: var(--accent-text);
-}
 
-/* Below 1024: pill, the two headlines, the standing GPU (gently looping), the VRAM strip, then both CTAs. */
+/* Below 1024: the two headlines, the standing GPU, then both CTAs; two screens of scroll instead of three. */
 @media (max-width: 1023px) {
-  .hero,
   .hero.pinned {
-    height: auto;
+    height: calc(300svh - var(--nav-h));
   }
-  .hero-sticky,
-  .hero.static .hero-sticky {
-    position: relative;
-    top: 0;
-    height: auto;
-    min-height: 0;
-    padding-block: var(--s-6) var(--s-5);
+  .hero-sticky {
+    height: calc(100svh - var(--nav-h));
+    min-height: 520px;
   }
   .hero-v {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-      'pill pill'
       'earn earn'
       'use use'
       'gpu gpu'
-      'vram vram'
-      'earnc usec'
-      'line line';
-    grid-template-rows: none;
-    row-gap: var(--s-3);
+      'earnc usec';
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    row-gap: var(--s-2);
+    padding-block: var(--s-5);
   }
   .hero-earn,
   .hero-use {
@@ -385,20 +292,8 @@
   .hero-side > p:not(.hero-half) {
     display: none;
   }
-  .stage-wrap {
-    height: min(58vh, 500px);
-    min-height: 340px;
-  }
-  .gpu-stage,
-  .gpu-still.solo {
-    inset: 0 -10%;
-    width: 120%;
-  }
-  .gpu-stage .gpu-still {
-    width: 100%;
-  }
-  .hero-vram {
-    width: 100%;
+  .gpu-room {
+    inset: 3% 0;
   }
   .hero-cta {
     padding-top: var(--s-2);
@@ -410,11 +305,13 @@
   .hero-cta .btn {
     width: 100%;
   }
-  .hero-vram {
-    margin-top: -24px;
-  }
   .steps-row ol {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 860px) {
+  .hero {
+    --nav-h: 56px;
   }
 }
 @media (max-width: 520px) {
@@ -422,17 +319,11 @@
     padding: 0 12px;
     font-size: var(--text-sm);
   }
-  .vs-req {
-    display: none;
-  }
 }
 
 /* live network */
 .stats {
   padding-block: var(--s-8) var(--s-6);
-}
-.stats-head {
-  margin-bottom: var(--s-4);
 }
 .stats-grid {
   display: grid;
@@ -489,10 +380,6 @@
 }
 .half-cta {
   margin-top: 4px;
-}
-.works {
-  display: grid;
-  gap: 8px;
 }
 .half h2 {
   font-size: clamp(1.6rem, 2.6vw, 2.1rem);

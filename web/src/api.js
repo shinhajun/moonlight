@@ -65,6 +65,18 @@ export function serviceError(err) {
   return err.message;
 }
 
+// What a failed model request says, whether it failed before the stream opened (503/402/429/5xx) or in it.
+export function requestError(err, model) {
+  if (err?.code === 'no_capacity') {
+    const reason = err.reason ?? err.body?.moonlight?.reason;
+    return reason === 'busy' ? `Every GPU serving ${model} is busy right now.` : `No GPU is serving ${model} right now.`;
+  }
+  return err?.status === 429 ? friendly(err) : serviceError(err);
+}
+
+// How long a web request waits in line, or for a seller that just dropped (e.g. during a deploy) to reconnect.
+export const MAX_WAIT_S = 90;
+
 // Rate limits (429) say what was limited and when to come back; other errors keep the server's words.
 export function friendly(err, action) {
   if (err?.status !== 429) return err?.message || 'Something went wrong. Try again.';

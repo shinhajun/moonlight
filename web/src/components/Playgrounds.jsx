@@ -1,8 +1,22 @@
 // Decision (systemone) and embedding playgrounds. Both bill the signed-in account.
 import { useEffect, useRef, useState } from 'react';
-import { api, serviceError, usd, ms, hardware, refreshMe } from '../api.js';
+import { api, requestError, usd, ms, hardware, refreshMe, MAX_WAIT_S } from '../api.js';
+import { Link } from '../router.jsx';
 import { resolveNode } from './ChatCore.jsx';
 import { Badge, Machine } from './ui.jsx';
+
+function RequestError({ error, model }) {
+  return (
+    <p className="form-error">
+      {requestError(error, model)}{' '}
+      {error.status === 402 && (
+        <Link to="/me/buy" className="link">
+          See your balance
+        </Link>
+      )}
+    </p>
+  );
+}
 
 async function metered(path, body) {
   const t0 = performance.now();
@@ -131,7 +145,7 @@ export function DecisionPlayground({ model, filters }) {
     setBusy(true);
     setError(null);
     try {
-      setRes(await metered('/api/playground/systemone', { model, state: { [key || 'input']: text }, questions: toQuestions(qs), ...(filters ? { moonlight: filters } : {}) }));
+      setRes(await metered('/api/playground/systemone', { model, state: { [key || 'input']: text }, questions: toQuestions(qs), moonlight: { max_wait_s: MAX_WAIT_S, ...filters } }));
     } catch (err) {
       setError(err);
     } finally {
@@ -180,7 +194,7 @@ export function DecisionPlayground({ model, filters }) {
       <button className="btn btn-primary" disabled={busy || !qs.length}>
         {busy ? 'Deciding…' : 'Decide'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No GPU is serving ${model} right now.` : serviceError(error)}</p>}
+      {error && <RequestError error={error} model={model} />}
       {res && (
         <div className="answers" key={res.meta.total_ms}>
           {Object.entries(res.data.answers).map(([n, a]) => (
@@ -257,7 +271,7 @@ export function EmbeddingPlayground({ model }) {
     setError(null);
     try {
       const input = b.trim() ? [a, b] : a;
-      setRes(await metered('/api/playground/embeddings', { model, input }));
+      setRes(await metered('/api/playground/embeddings', { model, input, moonlight: { max_wait_s: MAX_WAIT_S } }));
     } catch (err) {
       setError(err);
     } finally {
@@ -279,7 +293,7 @@ export function EmbeddingPlayground({ model }) {
       <button className="btn btn-primary" disabled={busy || !a.trim()}>
         {busy ? 'Embedding…' : 'Embed'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No GPU is serving ${model} right now.` : serviceError(error)}</p>}
+      {error && <RequestError error={error} model={model} />}
       {v && (
         <div className="embed-out">
           <div className="embed-facts">
