@@ -48,18 +48,18 @@ export function createStore(db, config) {
       }
     },
 
-    insertAccount({ email = null, name, handle, passwordHash = null, trusted = false, id = newId('usr') }) {
+    insertAccount({ email = null, name, handle, passwordHash = null, trusted = false, credit = config.demoCredit, id = newId('usr') }) {
       const t = now();
       db.tx(() => {
         db.run('INSERT INTO accounts (id, email, name, handle, password_hash, balance, trusted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          id, email, name, s.freeHandle(handle || slug(name)), passwordHash, config.demoCredit, trusted ? 1 : 0, t);
-        db.run('INSERT INTO ledger (ts, account_id, kind, amount) VALUES (?, ?, ?, ?)', t, id, 'grant', config.demoCredit);
+          id, email, name, s.freeHandle(handle || slug(name)), passwordHash, credit, trusted ? 1 : 0, t);
+        if (credit) db.run('INSERT INTO ledger (ts, account_id, kind, amount) VALUES (?, ?, ?, ?)', t, id, 'grant', credit);
       });
       return s.account(id);
     },
 
-    async signup({ email, password, name }) {
-      return s.insertAccount({ email, name, passwordHash: await hashPassword(password) });
+    async signup({ email, password, name, credit }) {
+      return s.insertAccount({ email, name, credit, passwordHash: await hashPassword(password) });
     },
 
     async login(email, password) {

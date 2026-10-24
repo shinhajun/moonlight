@@ -1,6 +1,7 @@
 // Web API (/api/*): accounts and sessions, keys, device pairing, nodes and listings, catalog, stats, events.
 import crypto from 'node:crypto';
 import { bearer, cookie, readJson, send } from './http.js';
+import { clientIp, createLimiter } from './ratelimit.js';
 import { licensePolicy, sanitizePrice } from './hub.js';
 import { marketPrice, paramsB } from './policy.js';
 import { badgeOf, reputation } from './routing.js';
@@ -12,10 +13,26 @@ const THINKING = /qwen3|qwq|deepseek-r1|glm-4\.[5-9]|gemma4|gpt-oss|magistral|re
 const PAIR_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 const unauthorized = (message = 'Sign in first.') => new ApiError(401, 'authentication_error', 'unauthorized', message);
+const HOUR = 3600_000;
+// Per-IP limits on the unauthenticated endpoints.
+const LIMITS = { signup: [5, HOUR], login: [20, 15 * 60_000], pair: [10, HOUR] };
+const NO_CREDIT = 'Demo credit goes to the first account created from your network each day, so this one starts at $0.';
 const accountView = (a) => ({ id: a.id, email: a.email, name: a.name, handle: a.handle, created_at: a.created_at });
 
 export function createApi(ctx) {
   const { config, db, store, hub, catalog, bus } = ctx;
+  const limiter = createLimiter();
+  const creditDay = new Map(); // ip -> UTC day its demo credit was handed out
+
+  function limit(req, name) {
+    const [max, windowMs] = LIMITS[name];
+    const wait = limiter.take(`${name}:${clientIp(req)}`, max, windowMs);
+    if (wait) {
+      throw new ApiError(429, 'rate_limit_error', 'rate_limited', `Too many attempts. Try again in ${Math.ceil(wait / 60)} min.`, {
+        headers: { 'retry-after': String(wait) },
+      });
+    }
+  }
 
   // Session cookie, or a Bearer API key / seller token (seed script, CLI).
   function who(req) {
@@ -37,6 +54,7 @@ export function createApi(ctx) {
   // ---- accounts ----
 
   async function signup(req, res) {
+    limit(req, 'signup');
     const b = await readJson(req);
     const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
     const password = typeof b.password === 'string' ? b.password : '';
@@ -44,12 +62,17 @@ export function createApi(ctx) {
     if (!EMAIL.test(email) || email.length > 200) throw errors.badRequest('Enter a valid email address.');
     if (password.length < 8 || password.length > 200) throw errors.badRequest('Use a password of at least 8 characters.');
     if (store.accountByEmail(email)) throw new ApiError(409, 'invalid_request_error', 'email_taken', 'An account with this email already exists. Sign in instead.');
-    const a = await store.signup({ email, password, name: name.slice(0, 60) });
+    const ip = clientIp(req);
+    const today = new Date().toISOString().slice(0, 10);
+    const credit = creditDay.get(ip) === today ? 0 : config.demoCredit;
+    if (credit) creditDay.set(ip, today);
+    const a = await store.signup({ email, password, name: name.slice(0, 60), credit });
     setSession(req, res, a.id);
-    send(res, 201, { account: accountView(a) });
+    send(res, 201, { account: accountView(a), demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) });
   }
 
   async function login(req, res) {
+    limit(req, 'login');
     const b = await readJson(req);
     const a = await store.login(String(b.email || '').trim().toLowerCase(), String(b.password || ''));
     if (!a) throw new ApiError(401, 'authentication_error', 'bad_credentials', 'Wrong email or password.');
@@ -64,7 +87,9 @@ export function createApi(ctx) {
   }
 
   // v0 throwaway accounts, kept for the demo seed script: returns an API key (buyer) or seller token (seller).
+  // Operator only: needs the admin token.
   async function seedAccount(req, res) {
+    if (!config.adminToken || bearer(req) !== config.adminToken) throw errors.forbidden('Seed accounts need the operator token. Sign up instead.');
     const b = await readJson(req);
     const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : '';
     if (!name) throw errors.badRequest('`name` is required.');
@@ -126,6 +151,7 @@ export function createApi(ctx) {
   const normCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^(.{4})(.{4})$/, '$1-$2');
 
   async function pair(req, res) {
+    limit(req, 'pair');
     const b = await readJson(req);
     const n = b.node && typeof b.node === 'object' ? b.node : {};
     const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);

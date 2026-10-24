@@ -94,11 +94,17 @@ function noCapacity(ctx, model) {
 }
 
 // Next candidate, waiting in the model's fair queue if nobody has capacity. Queue time is counted, never billed.
+// Verification jobs yield: on a single-slot node they wait while any buyer is queued for that node's models.
 async function acquire(ctx, r, exclude) {
-  const find = () => rank(ctx, eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude }))[0] || null;
+  const find = () => {
+    const cand = rank(ctx, eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude }))[0] || null;
+    if (cand && r.verification && cand.conn.maxConcurrency === 1 && ctx.scheduler.buyersWaiting(cand.conn)) return null;
+    return cand;
+  };
   try {
     const { cand, queuedMs } = await ctx.scheduler.acquire({
       key: r.model.id, buyerId: r.buyer.id, find, maxWaitMs: Math.max(0, r.maxWaitMs - r.queuedMs), signal: r.signal, onQueued: r.onQueued,
+      background: r.verification,
     });
     r.queuedMs += queuedMs;
     return cand;
