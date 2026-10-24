@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { listOf, useApi, useMe, usd, priceLabel, ms, AUTO_MODELS, ago } from '../api.js';
 import { Link, navigate } from '../router.jsx';
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
@@ -28,6 +28,18 @@ const SUGGESTIONS = [
   'Draft a Python function that formats micro-dollars',
   'What should I ask a model running on a stranger’s computer?',
 ];
+
+// Until the catalog arrives the picker is a placeholder, so the default model never flashes and changes.
+function PickerSkeleton() {
+  return (
+    <div className="picker" aria-busy="true" aria-label="Loading models">
+      <span className="picker-btn picker-skeleton">
+        <span className="skeleton" style={{ width: 128, height: 16 }} />
+        <span className="skeleton" style={{ width: 92, height: 10 }} />
+      </span>
+    </div>
+  );
+}
 
 function ModelPicker({ value, onChange, models }) {
   const [open, setOpen] = useState(false);
@@ -89,7 +101,7 @@ function ModelPicker({ value, onChange, models }) {
   );
 }
 
-function ChatWindow({ chat, onUpdate, models, me }) {
+function ChatWindow({ chat, onUpdate, models, ready, me }) {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [model, setModel] = useState(chat.model);
   const { messages, send, retry, stop, busy } = useChat({
@@ -99,7 +111,8 @@ function ChatWindow({ chat, onUpdate, models, me }) {
     onChange: (msgs) => onUpdate({ ...chat, model, messages: msgs, title: chat.title || msgs.find((x) => x.role === 'user')?.content.slice(0, 60) || '', updated: Date.now() }),
   });
   // A fresh chat on "any large model" falls back to small ones when no large model is online.
-  useEffect(() => {
+  // Layout effect: the switch lands before the first paint with the catalog.
+  useLayoutEffect(() => {
     if (messages.length || model !== 'auto/chat-large' || !models.length) return;
     if (!models.some((m) => m.sellers_online > 0 && (m.params_b ?? 0) > 9)) setModel('auto/chat-small');
   }, [models]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -113,7 +126,7 @@ function ChatWindow({ chat, onUpdate, models, me }) {
   return (
     <section className="chat-main">
       <header className="chat-bar">
-        <ModelPicker value={model} onChange={setModel} models={models} />
+        {ready ? <ModelPicker value={model} onChange={setModel} models={models} /> : <PickerSkeleton />}
         <span className="chat-balance num" title="Your balance">
           {me ? usd(me.balance_microusd, 6) : ''}
         </span>
@@ -169,7 +182,13 @@ function ChatWindow({ chat, onUpdate, models, me }) {
       <footer className="chat-foot">
         <div className="chat-col">
           {me ? (
-            <Composer onSend={(t) => send(t)} onStop={stop} busy={busy} autoFocus placeholder={`Message ${AUTO_MODELS.find((a) => a.id === model)?.label.toLowerCase() || model}`} />
+            <Composer
+              onSend={(t) => send(t)}
+              onStop={stop}
+              busy={busy}
+              autoFocus
+              placeholder={ready ? `Message ${AUTO_MODELS.find((a) => a.id === model)?.label.toLowerCase() || model}` : 'Message'}
+            />
           ) : (
             me === null && (
               <Link to={loginPath('/chat')} className="composer composer-cta">
@@ -281,7 +300,9 @@ export default function Chat() {
         </svg>
         Chats
       </button>
-      {current && <ChatWindow key={current.id} chat={current} models={models} me={me} onUpdate={(c) => setChats((cs) => cs.map((x) => (x.id === c.id ? c : x)))} />}
+      {current && (
+        <ChatWindow key={current.id} chat={current} models={models} ready={!!data} me={me} onUpdate={(c) => setChats((cs) => cs.map((x) => (x.id === c.id ? c : x)))} />
+      )}
       <div className="drawer-scrim" onClick={() => setDrawer(false)} aria-hidden />
     </main>
   );
