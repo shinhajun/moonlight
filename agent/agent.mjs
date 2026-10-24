@@ -24,7 +24,7 @@ Usage
   moonlight scan             list the models this computer can serve, then exit
   moonlight stop             ask the running agent to finish its jobs and stop
   moonlight logout           forget this computer's token
-  moonlight laya install     set up the Laya decision-model runner (uses uv)
+  moonlight laya install     install the Laya decision-model runner (with uv); moonlight then starts it as needed
 
 Options
   --name <text>              name buyers see (default: this computer's name)
@@ -1285,6 +1285,7 @@ async function stopGracefully() {
 
 function exitNow(code) {
   restoreTerminal();
+  layaChild?.kill();
   try { if (Number(fs.readFileSync(PID_FILE, 'utf8')) === process.pid) fs.unlinkSync(PID_FILE); } catch {}
   if (st.node) {
     process.stdout.write(`${accent('☾')} Moonlight agent stopped. Served ${fmtNum(st.requests)} request${st.requests === 1 ? '' : 's'}`
@@ -1357,6 +1358,7 @@ async function runAgent(opts) {
   process.on('uncaughtException', (e) => { restoreTerminal(); process.stderr.write(`moonlight crashed: ${e.stack || e}\n`); process.exit(1); });
   startDashboard();
   connect();
+  autostartLaya();
 
   setInterval(() => {
     if (st.conn === 'online') send({ t: 'ping', ts: Date.now() });
@@ -1413,27 +1415,87 @@ function stopCommand() {
   process.stdout.write(`Asked the agent (pid ${pid}) to stop. It finishes its in-flight jobs first (up to 30 s).\n`);
 }
 
+function ask(question) {
+  return new Promise((resolve) => {
+    if (!process.stdin.isTTY) return resolve('');
+    process.stdout.write(question);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', (d) => { process.stdin.pause(); resolve(String(d).trim().toLowerCase()); });
+  });
+}
+
+const exitCode = (child) => new Promise((resolve) => { child.on('exit', resolve); child.on('error', () => resolve(1)); });
+
+// uv on PATH, or where its installer puts it.
+async function findUv() {
+  if (await run('uv', ['--version'])) return 'uv';
+  const exe = process.platform === 'win32' ? 'uv.exe' : 'uv';
+  for (const dir of [path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.cargo', 'bin')]) {
+    const p = path.join(dir, exe);
+    if (fs.existsSync(p) && await run(p, ['--version'])) return p;
+  }
+  return null;
+}
+
 async function layaInstallCommand() {
   ui.color = !!process.stdout.isTTY && !process.env.NO_COLOR;
-  const uv = await run('uv', ['--version']);
+  let uv = await findUv();
   if (!uv) {
-    const how = process.platform === 'win32'
-      ? 'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"'
-      : 'curl -LsSf https://astral.sh/uv/install.sh | sh';
-    die(`laya-runner is a Python app installed with uv, which isn't on this computer.\nInstall uv first:\n  ${how}\nthen run \`moonlight laya install\` again.`);
+    const [cmd, args] = process.platform === 'win32'
+      ? ['powershell', ['-ExecutionPolicy', 'ByPass', '-c', 'irm https://astral.sh/uv/install.ps1 | iex']]
+      : ['sh', ['-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']];
+    process.stdout.write('laya-runner is a Python app, installed with uv (which also brings its own Python).\n');
+    const answer = await ask(`uv isn't installed. Install it now from astral.sh? [Y/n] `);
+    if (answer && answer !== 'y' && answer !== 'yes') die(`Install uv yourself with:\n  ${cmd} ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}\nthen run \`moonlight laya install\` again.`);
+    if (!process.stdin.isTTY) process.stdout.write('Installing uv…\n');
+    if (await exitCode(spawn(cmd, args, { stdio: 'inherit' })) !== 0 || !(uv = await findUv())) die('Installing uv failed (see the output above).');
   }
   const spec = 'git+https://github.com/shinhajun/moonlight#subdirectory=laya-runner';
-  process.stdout.write(`Installing laya-runner with ${uv}…\n`);
-  const code = await new Promise((resolve) => {
-    const child = spawn('uv', ['tool', 'install', '--force', '--python', '3.12', spec], { stdio: 'inherit' });
-    child.on('exit', resolve);
-    child.on('error', () => resolve(1));
+  process.stdout.write(`Installing laya-runner with ${await run(uv, ['--version'])}…\n`);
+  if (await exitCode(spawn(uv, ['tool', 'install', '--force', '--python', '3.12', spec], { stdio: 'inherit' })) !== 0) {
+    die('uv could not install laya-runner (see the output above).');
+  }
+  const binDir = await run(uv, ['tool', 'dir', '--bin']);
+  const command = binDir && path.join(binDir, process.platform === 'win32' ? 'laya-runner.exe' : 'laya-runner');
+  const cfg = loadConfig();
+  cfg.laya = { command, autostart: true };
+  saveConfig(cfg);
+  process.stdout.write(`\n${green('✓')} Installed laya-runner. \`moonlight\` now starts it for you when it isn't already running`
+    + ` (the first start downloads the 840 MB Laya model).\nTo run it yourself instead: ${command ?? 'laya-runner'}\n`);
+}
+
+// Started by the agent when `moonlight laya install` set it up and nothing answers on the laya port.
+let layaChild = null;
+
+async function autostartLaya() {
+  const cfg = loadConfig().laya;
+  if (!cfg?.autostart || !cfg.command || !fs.existsSync(cfg.command)) return;
+  if (await getJSON(`${ctx.laya}/health`).then(() => true, () => false)) return;
+  const u = new URL(ctx.laya);
+  if (!['127.0.0.1', 'localhost'].includes(u.hostname)) return;
+  const logFile = path.join(HOME, 'laya-runner.log');
+  const out = fs.openSync(logFile, 'a');
+  layaChild = spawn(cfg.command, ['--port', u.port || '8765'], { stdio: ['ignore', out, out], windowsHide: true });
+  layaChild.on('error', () => { layaChild = null; });
+  layaChild.on('exit', (code) => {
+    if (layaChild && !conn.stopping) log(`laya-runner exited (${code}); see ${logFile}`, { icon: '!', color: yellow });
+    layaChild = null;
   });
-  if (code !== 0) die('uv could not install laya-runner (see the output above).');
-  process.stdout.write(`\n${green('✓')} Installed. Start it in its own terminal (first start downloads the 840 MB Laya model):\n\n    laya-runner\n\nThen run \`moonlight\`; it finds the runner on :8765 automatically.\n`);
+  log(`Starting laya-runner (log: ${logFile}). The first start downloads the Laya model…`, { icon: '◌', color: cyan });
+  const until = Date.now() + 15 * 60_000;
+  while (layaChild && Date.now() < until) {
+    await sleep(3000);
+    if (await getJSON(`${ctx.laya}/health`, { timeout: 1000 }).then(() => true, () => false)) {
+      log('laya-runner is ready', { icon: '●', color: green });
+      return rescan().catch(() => {});
+    }
+  }
 }
 
 async function main() {
+  // `moonlight scan | head` closes the pipe early; that's not an error.
+  process.stdout.on('error', (e) => { if (e.code === 'EPIPE') process.exit(0); });
   const { cmd, opts } = parseArgs(process.argv.slice(2));
   if (opts.version) return void process.stdout.write(`moonlight ${VERSION}\n`);
   if (opts.help || cmd[0] === 'help') return void process.stdout.write(HELP + '\n');

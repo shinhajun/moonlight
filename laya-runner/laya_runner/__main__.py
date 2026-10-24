@@ -1,4 +1,4 @@
-"""python -m laya_runner: serve Laya on :8765 for the Moonlight agent."""
+"""Serve Laya decision models on :8765 for the Moonlight agent (laya-runner, or python -m laya_runner)."""
 import argparse
 import os
 
@@ -6,7 +6,7 @@ os.environ.setdefault("USE_TF", "0")  # transformers' TensorFlow probe can deadl
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(prog="python -m laya_runner", description=__doc__)
+    p = argparse.ArgumentParser(prog="laya-runner", description=__doc__)
     p.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1; the agent runs on the same machine)")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--device", default="auto", help="auto (cuda, then mps, then cpu), cpu, cuda or mps")
