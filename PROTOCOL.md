@@ -1,4 +1,4 @@
-# Moonlight protocol (v0)
+# Moonlight protocol (v0.2)
 
 Moonlight lets anyone sell the models running on their own computer. Buyers call one API. The gateway routes each call to a seller's machine, meters it, pays the seller, and checks that the seller really runs the model they listed.
 
@@ -34,8 +34,11 @@ One origin serves everything:
 `model_id` names a model in the catalog.
 - **Public model:** an Ollama tag (`qwen3.5:35b-a3b`, `gemma4:26b`, `qwen2.5:3b`) or `laya-base` / `laya-multilingual`. A public model has a reference digest: the Ollama manifest digest, or the sha256 of the Laya weights.
 - **Private model:** `<seller-handle>/<name>`, e.g. `hajun/support-triage`. The weights never leave the seller's machine, so there is no reference.
-- `kind` is `chat` (OpenAI chat completions) or `decision` (System-1 / `systemone`: typed answers with probabilities, as in Jev and Laya).
-- An operator allowlist decides which public tags may be listed. The gateway rejects any other public tag, and uncensored/abliterated variants are never allowed.
+- `kind` is one of:
+  - `chat`: OpenAI chat completions
+  - `embedding`: OpenAI `/v1/embeddings`
+  - `decision`: System-1 / `systemone`, typed answers with probabilities, as in Jev and Laya
+- There is **no allowlist**. Any model a seller's machine can run may be listed, subject to the listing policy under "Public sellers". The catalog is dynamic: a model exists when at least one seller lists it.
 
 ## Buyer API
 
@@ -101,8 +104,8 @@ Rules:
 - **Chat models (teacher-forced next-word agreement):** Free generation diverges across hardware: honest CPU vs GPU averaged only 0.66 similarity. So the gateway sends canary jobs at random times instead, built like this:
   1. Take a canary prompt and the reference node's greedy answer for it, with `temperature:0`, `seed:42`, and `reasoning_effort:"none"`.
   2. At about 6 word boundaries in that answer, send the prompt plus the reference prefix as a trailing `assistant` message (prefill), with `max_tokens:4`.
-  3. Compare the first next word with the reference's next word.
-  4. Agreement across the boundaries is the score. It passes at ≥ 0.85.
+  3. Run the same prefilled boundary job on the reference node too, and compare the target's first next word with the *reference node's* next word for that same input, not with the word in the reference answer. This works for models that continue a prefill and for ones that restart (gemma4, glm).
+  4. Use 8 boundaries (a config knob). Passing takes 7 of 8.
 
   Measured: self 0.97, CPU vs GPU 0.94, a 0.5b model serving for 3b 0.69. Canary jobs look like ordinary short buyer jobs.
 - **Thinking models** (qwen3.5, gemma4, glm-4.7-flash) put output into `delta.reasoning`:
@@ -158,3 +161,66 @@ node agent.mjs --token ml_st_... [--gateway wss://moonlight.hajunshin.com/agent]
 - `GET /health` returns `{model_id, digest, device, models:[{model_id, digest, kind, private}]}`. The top-level fields describe the primary model; `models` lists everything the runner serves.
 - Laya returns `output_tokens: 0`. Jev rejects `score` criteria given as a dict (422); criteria must be a list, and the runner accepts the same.
 - It also serves a private fine-tuned checkpoint for the demo (`hajun/support-triage`) if one is built.
+
+## Public sellers (v0.2)
+
+Moonlight is a real product, not a scripted demo. Anyone can visit the site, register their computer, and sell every model it can run.
+
+### Accounts
+- Accounts use email + password, with the password hashed by Node `crypto.scrypt`. Sessions are HttpOnly cookies.
+- One account can both buy and sell. The API keys (`ml_sk_`) belong to the account.
+- This replaces the throwaway `POST /api/accounts` from v0. Keep that endpoint only for the demo seed script.
+
+### Adding a computer (device pairing, like `gh auth login`)
+1. The user installs the agent with one line from the site:
+   - macOS/Linux: `curl -fsSL https://moonlight.hajunshin.com/install.sh | sh`
+   - Windows: `irm https://moonlight.hajunshin.com/install.ps1 | iex`
+
+   That downloads a standalone `moonlight` binary for darwin-arm64/x64, linux-x64/arm64, or windows-x64, so no Node install is needed.
+2. `moonlight` (first run) → `POST /api/devices/pair` `{node:{name, os, arch, cpu, ram_gb, gpu, vram_gb}}` → `{pair_code:"ABCD-1234", verify_url, poll_token, expires_at}`.
+   - The CLI prints the code and opens `verify_url` in the browser.
+3. The logged-in user sees "Approve Hajun's MacBook?" with the hardware, and approves.
+4. The agent polls `POST /api/devices/pair/poll {poll_token}` and receives a node token `ml_nt_<32 hex>`. It stores the token in its config dir (`~/.moonlight/config.json`, mode 0600).
+5. `--token` still works for scripts and for the demo's trusted node.
+
+### Discovery: the agent finds everything it can serve
+- Probe these runtimes, skipping any that don't answer within 300 ms:
+  - Ollama `:11434` (`/api/tags`, plus `/api/show` for family, params, quant, context, and license text)
+  - LM Studio `:1234`
+  - llama.cpp server `:8080`
+  - vLLM `:8000`
+  - Jan `:1337`
+  - LocalAI
+  - KoboldCpp `:5001`
+  - any `--endpoint http://host:port/v1` the user adds
+  - laya-runner `:8765`
+- The OpenAI-compatible runtimes are listed through `/v1/models`.
+- Classify each model as `chat`, `embedding`, or `decision`.
+- `hello.models[]` gains these fields: `runtime` (`ollama|lmstudio|llamacpp|vllm|jan|localai|kobold|openai|laya`), `family`, `params_b`, `quant`, `context`, `license:{id, text_sha256?, source}`, and `source:{registry:"ollama"|"hf"|"local", ref}`.
+- Re-scan every 60 s, and send `t:"models"` with the full list when it changes.
+
+### Listing policy (the gateway decides per model; the web shows why)
+- **Licenses:**
+  - Permissive or commercial-OK (Apache-2.0, MIT, Llama/Gemma/Qwen community terms, and so on) → listable.
+  - Non-commercial or research-only (CC-BY-NC, Codestral's MNPL, Command-R NC, and so on) → `blocked:license`.
+  - Unknown license → listable only after the seller ticks "I have the right to sell access to this model" in the web.
+- **Uncensored, abliterated, or "heretic" variants** (matched by name/tag patterns and HF tags) → `blocked:policy`.
+- **Default for listable models:** they go live immediately with a suggested price, which the seller can pause or edit in the web. The suggested price comes from `params_b`, quant, and kind (embedding < small chat < large chat), and is shown as "market" vs "yours".
+
+### Verification for an open catalog
+- **Digest sources:**
+  - the Ollama registry manifest digest
+  - the Hugging Face file sha256 (LFS oid) for `hf.co/...` GGUF tags and HF repos
+  - trusted-node digests
+- **Behavior reference, chosen in this order:**
+  1. a trusted node serving the model
+  2. otherwise **peer cross-checks**: canaries go to 2+ sellers of the same model, and a seller that disagrees with the peer majority fails
+  3. otherwise there's no reference. The listing gets the `consistent` badge (self-consistency + uptime) and the UI says "Not independently verified yet".
+- **Embeddings:** cosine ≥ 0.99 with the reference or peer embedding for the same canary text.
+
+### New endpoints
+- `POST /v1/embeddings`: OpenAI-compatible.
+- `POST /api/devices/pair`, `POST /api/devices/pair/poll`, `POST /api/devices/:code/approve`.
+- `GET /api/me/nodes` lists the nodes with their discovered models and each one's policy result: live, paused, needs_attestation, blocked:license, or blocked:policy.
+- `PATCH /api/me/listings/:id {price?, paused?, attest?}`.
+- `GET /install.sh`, `GET /install.ps1`, and `GET /dl/moonlight-<os>-<arch>[.exe]`.
