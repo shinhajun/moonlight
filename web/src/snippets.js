@@ -13,7 +13,7 @@ client = OpenAI(
 
 reply = client.chat.completions.create(
     model="${model}",  # or "auto/chat-large" for any free large model
-    messages=[{"role": "user", "content": "Hello from the night shift"}],${verified ? '\n    extra_body={"moonlight": {"verified_only": True}},' : ''}
+    messages=[{"role": "user", "content": "Hello from Moonlight"}],${verified ? '\n    extra_body={"moonlight": {"verified_only": True}},' : ''}
 )
 print(reply.choices[0].message.content)`;
 
@@ -26,7 +26,7 @@ const client = new OpenAI({
 
 const stream = await client.chat.completions.create({
   model: "${model}",
-  messages: [{ role: "user", content: "Hello from the night shift" }],
+  messages: [{ role: "user", content: "Hello from Moonlight" }],
   stream: true,${verified ? '\n  moonlight: { verified_only: true },' : ''}
 });
 for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.content ?? "");`;
@@ -36,7 +36,7 @@ const chatCurl = (model, verified) => `curl ${BASE}/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${model}",
-    "messages": [{"role": "user", "content": "Hello from the night shift"}]${verified ? ',\n    "moonlight": {"verified_only": true}' : ''}
+    "messages": [{"role": "user", "content": "Hello from Moonlight"}]${verified ? ',\n    "moonlight": {"verified_only": true}' : ''}
   }'`;
 
 const embedPy = (model) => `from openai import OpenAI

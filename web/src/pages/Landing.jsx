@@ -1,257 +1,410 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from '../router.jsx';
-import { badgeOf, useApi, useEvents, usd, int } from '../api.js';
-import { useNetwork } from '../network.js';
-import Village from '../components/Village.jsx';
-import { Badge, CopyBox, Icon, Odometer, Stamp, useTween, BADGE_COPY } from '../components/ui.jsx';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, modelPath } from '../router.jsx';
+import { listOf, useApi, useEvents, usd, int, priceLabel, KINDS } from '../api.js';
+import { Badge, CopyBox, Icon, RollingNumber, useTween, BADGE_COPY } from '../components/ui.jsx';
 import { installCommand, detectOS } from './AddComputer.jsx';
 import { BASE } from '../snippets.js';
 
-export function Moon({ size = 180 }) {
-  return (
-    <svg className="moon-art" width={size} height={size} viewBox="0 0 200 200" aria-hidden>
-      <defs>
-        <radialGradient id="halo" cx="50%" cy="50%" r="50%">
-          <stop offset="55%" stopColor="var(--lamp)" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="var(--lamp)" stopOpacity="0" />
-        </radialGradient>
-        <mask id="crescent">
-          <circle cx="100" cy="100" r="62" fill="white" />
-          <circle cx="128" cy="82" r="56" fill="black" />
-        </mask>
-        <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)">
-          <line x1="0" y1="0" x2="0" y2="5" stroke="var(--ink)" strokeWidth="1.1" />
-        </pattern>
-      </defs>
-      <circle className="moon-halo" cx="100" cy="100" r="100" fill="url(#halo)" />
-      <g mask="url(#crescent)">
-        <circle className="moon-face" cx="100" cy="100" r="62" />
-        <circle className="moon-hatch" cx="100" cy="100" r="62" fill="url(#hatch)" />
-        <circle className="moon-crater" cx="64" cy="118" r="9" />
-        <circle className="moon-crater" cx="80" cy="148" r="5" />
-        <circle className="moon-crater" cx="58" cy="84" r="4" />
-      </g>
-      <circle className="moon-edge" cx="100" cy="100" r="62" mask="url(#crescent)" />
-    </svg>
-  );
+const GpuStage = lazy(() => import('../components/GpuStage.jsx'));
+
+// WebGL only where it will be smooth: no reduced motion, real GPU, enough cores. ?gpu=3d|still overrides.
+function can3D() {
+  const q = new URLSearchParams(location.search).get('gpu');
+  if (q === '3d') return true;
+  if (q === 'still') return false;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+  if ((navigator.hardwareConcurrency || 8) < 4 || (navigator.deviceMemory || 8) < 4) return false;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return false;
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : '';
+    return !/swiftshader|llvmpipe|software/i.test(name);
+  } catch {
+    return false;
+  }
 }
 
-function SteamGauge({ value = 0 }) {
-  const max = Math.max(60, Math.ceil((value * 1.4) / 30) * 30);
-  const v = useTween(value, 1200);
-  const angle = -120 + (Math.min(v, max) / max) * 240;
-  const ticks = Array.from({ length: 13 }, (_, i) => -120 + i * 20);
-  return (
-    <svg className="steam-gauge" viewBox="0 0 120 92" aria-hidden>
-      <path d="M17.3 84.6A52 52 0 1 1 102.7 84.6" fill="none" stroke="var(--rule-strong)" strokeWidth="1.5" />
-      <path d="M78.9 15.4A52 52 0 0 1 102.7 84.6" fill="none" stroke="var(--oxide)" strokeWidth="4" opacity="0.7" />
-      {ticks.map((a, i) => (
-        <line key={a} x1="60" y1={i % 3 === 0 ? 14 : 17} x2="60" y2="21" stroke="var(--ink-2)" strokeWidth={i % 3 === 0 ? 1.6 : 1} transform={`rotate(${a} 60 60)`} />
-      ))}
-      <text x="60" y="44" textAnchor="middle" className="gauge-unit">
-        REQ / MIN
-      </text>
-      <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: '60px 60px', transition: 'transform 1.2s var(--ease-out)' }}>
-        <path d="M58.6 60L60 18l1.4 42z" fill="var(--ink)" />
-      </g>
-      <circle cx="60" cy="60" r="6" fill="var(--ink)" />
-      <circle cx="60" cy="60" r="2.2" fill="var(--lamp)" />
-    </svg>
-  );
-}
+const Still = () => <img className="gpu-still solo" src="/gpu-still.webp" alt="A graphics card" />;
+const smooth = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
-function Windows({ lit = 0, total = 24 }) {
-  return (
-    <span className="windows" aria-hidden>
-      {Array.from({ length: total }, (_, i) => (
-        <i key={i} className={i < lit ? 'on' : ''} style={{ transitionDelay: `${i * 25}ms` }} />
-      ))}
-    </span>
-  );
-}
-
-function Instruments() {
-  const { data } = useApi('/api/stats', { interval: 6000 });
-  const [extraPaid, setExtraPaid] = useState(0);
-  const [checks, setChecks] = useState(0);
+// Scroll progress through the sticky hero on wide screens; a slow loop on phones.
+function useHeroProgress(ref) {
+  const [p, setP] = useState(0);
   useEffect(() => {
-    setExtraPaid(0);
-    setChecks(0);
-  }, [data]);
-  useEvents((type, d) => {
-    if (type === 'earning' && !d.held) setExtraPaid((x) => x + (d.amount_microusd || 0));
-    if (type === 'verification') setChecks((x) => x + 1);
-  });
-  const paid = useTween(data ? data.paid_to_sellers_microusd + extraPaid : 0, 800);
-  const s = data || {};
+    const wide = matchMedia('(min-width: 861px)');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    let loop = 0;
+    let t0 = performance.now();
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const r = ref.current.getBoundingClientRect();
+        const total = r.height - innerHeight;
+        setP(total > 0 ? Math.min(1, Math.max(0, -r.top / total)) : 0);
+      });
+    };
+    const tick = (now) => {
+      setP((Math.sin((now - t0) / 2600 - Math.PI / 2) + 1) / 2);
+      loop = requestAnimationFrame(tick);
+    };
+    const setup = () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(loop);
+      if (wide.matches) {
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+      } else if (!reduced) {
+        t0 = performance.now();
+        loop = requestAnimationFrame(tick);
+      } else setP(0.8);
+    };
+    setup();
+    wide.addEventListener('change', setup);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      wide.removeEventListener('change', setup);
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(loop);
+    };
+  }, [ref]);
+  return p;
+}
+
+const STEPS = [
+  ['Your apps use part of your VRAM.', 'Games, editors and local models rarely fill a card for long.'],
+  ['Moonlight serves open models in the spare room.', 'Requests are routed to your GPU only when the room is there.'],
+  ['You earn on every token.', '90% of each request is yours. Pause or reprice anytime.'],
+];
+
+// An illustration, not live data: a 24 GB card shared by your apps and Moonlight.
+function VramCard({ share }) {
+  const TOTAL = 24;
+  const [apps, setApps] = useState(8.6);
+  const [earned, setEarned] = useState(0);
+  const [served, setServed] = useState(0);
+  const [pulse, setPulse] = useState(0);
+  const active = share > 0.15;
+  useEffect(() => {
+    const id = setInterval(() => setApps((a) => Math.min(11.2, Math.max(6.4, a + (Math.random() - 0.5) * 1.1))), 1400);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => {
+      setServed((n) => n + 1);
+      setEarned((e) => e + 40 + Math.random() * 160);
+      setPulse((x) => x + 1);
+    }, 700);
+    return () => clearInterval(id);
+  }, [active]);
+  const ml = share * (TOTAL - apps - 1.4);
+  const free = TOTAL - apps - ml;
+  const pct = (gb) => `${(gb / TOTAL) * 100}%`;
+  const shown = useTween(earned, 600);
   return (
-    <section className="instruments" aria-label="Live network numbers">
-      <div className="wrap">
-        <hr className="rule" />
-        <div className="gauges">
-          <div className="gauge">
-            <span className="kicker">Homes on shift</span>
-            <div className="gauge-read">
-              <Odometer value={int(s.nodes_online ?? 0)} />
-              <Windows lit={s.nodes_online ?? 0} total={Math.max(24, (s.nodes_online ?? 0) + 6)} />
-            </div>
-            <p className="gauge-note">
-              {s.nodes_online === 1 ? 'computer' : 'computers'} online, from {s.sellers_online ?? '—'} {s.sellers_online === 1 ? 'seller' : 'sellers'}
+    <div className="vram-card">
+      <div className="vram-head">
+        <span className="vram-title">
+          <Icon name="gpu" size={14} /> 24 GB GPU
+        </span>
+        <span className="tag">Illustration</span>
+      </div>
+      <div className="vram-bar" role="img" aria-label={`Your apps ${apps.toFixed(1)} GB, Moonlight ${ml.toFixed(1)} GB, free ${free.toFixed(1)} GB`}>
+        <span className="seg seg-apps" style={{ width: pct(apps) }} />
+        <span className="seg seg-ml" style={{ width: pct(ml) }}>
+          {active && <i key={pulse} className="seg-pulse" />}
+        </span>
+      </div>
+      <dl className="vram-legend">
+        <div>
+          <dt>
+            <i className="dot dot-apps" />
+            Your apps
+          </dt>
+          <dd className="num">{apps.toFixed(1)} GB</dd>
+        </div>
+        <div>
+          <dt>
+            <i className="dot dot-ml" />
+            Moonlight
+          </dt>
+          <dd className="num">{ml.toFixed(1)} GB</dd>
+        </div>
+        <div>
+          <dt>
+            <i className="dot dot-free" />
+            Free
+          </dt>
+          <dd className="num">{free.toFixed(1)} GB</dd>
+        </div>
+      </dl>
+      <div className="vram-earn">
+        <div>
+          <span className="label">Earned</span>
+          <RollingNumber value={usd(Math.round(shown), 6)} className="vram-money" />
+        </div>
+        <div>
+          <span className="label">Requests</span>
+          <span className="num vram-served">{int(served)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Hero() {
+  const ref = useRef(null);
+  const p = useHeroProgress(ref);
+  const show3D = useMemo(can3D, []);
+  const explode = smooth(0.08, 0.72, p);
+  const share = smooth(0.3, 0.75, p);
+  const step = p < 0.33 ? 0 : p < 0.66 ? 1 : 2;
+  return (
+    <section className="hero" ref={ref}>
+      <div className="hero-sticky">
+        <div className="hero-bg" aria-hidden>
+          <div className="hero-glow" style={{ opacity: 0.55 + share * 0.45 }} />
+        </div>
+        <div className="wrap hero-grid">
+          <div className="hero-copy">
+            <Link to="/trust" className="pill">
+              <Icon name="shield" size={14} /> Every seller is checked with hidden test jobs <Icon name="arrow" size={13} />
+            </Link>
+            <h1 className="hero-title">
+              Earn from your spare GPU.
+              <span>Use open models for less.</span>
+            </h1>
+            <p className="hero-sub">
+              Moonlight is a marketplace for idle VRAM. GPU owners rent out the room their own apps aren&apos;t using, even while they work. Developers get one OpenAI-compatible API to
+              open models on GPUs that already exist.
             </p>
-          </div>
-          <div className="gauge">
-            <span className="kicker">Requests</span>
-            <div className="gauge-read gauge-dial">
-              <SteamGauge value={s.requests_per_min ?? 0} />
-              <Odometer value={int(s.requests_per_min ?? 0)} className="dial-num" />
+            <div className="hero-cta">
+              <Link to="/add" className="btn btn-primary btn-lg">
+                Start earning <Icon name="arrow" />
+              </Link>
+              <Link to="/developers" className="btn btn-ghost btn-lg">
+                Use the API
+              </Link>
             </div>
-            <p className="gauge-note">per minute, routed to the best free home</p>
+            <ol className="hero-steps" aria-label="How it works">
+              {STEPS.map(([title, text], i) => (
+                <li key={title} className={i === step ? 'on' : i < step ? 'done' : ''}>
+                  <span className="step-n num">0{i + 1}</span>
+                  <div>
+                    <b>{title}</b>
+                    <p>{text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div className="gauge gauge-wide">
-            <span className="kicker">Paid to sellers</span>
-            <div className="gauge-read">
-              <Odometer value={usd(Math.round(paid), 4)} className="odo-money" />
+          <div className="hero-visual">
+            <div className="stage-wrap">
+              {show3D ? (
+                <Suspense fallback={<Still />}>
+                  <GpuStage progress={explode} load={0.25 + share * 0.75} />
+                </Suspense>
+              ) : (
+                <Still />
+              )}
             </div>
-            <p className="gauge-note">90% of every request goes to the computer that answered it</p>
-          </div>
-          <div className="gauge">
-            <span className="kicker">Inspections</span>
-            <div className="gauge-read">
-              <Odometer value={int((s.verifications_last_hour ?? 0) + checks)} />
-            </div>
-            <p className="gauge-note">hidden test jobs in the last hour</p>
+            <VramCard share={share} />
           </div>
         </div>
-        <hr className="hair" />
+        <div className="scroll-hint" style={{ opacity: 1 - smooth(0, 0.08, p) }} aria-hidden>
+          Scroll to open the card
+        </div>
       </div>
     </section>
   );
 }
 
+function NetworkStats() {
+  const { data } = useApi('/api/stats', { interval: 6000 });
+  const [extra, setExtra] = useState(0);
+  useEffect(() => setExtra(0), [data]);
+  useEvents((type, d) => {
+    if (type === 'earning' && !d.held) setExtra((x) => x + (d.amount_microusd || 0));
+  });
+  const paid = useTween(data ? data.paid_to_sellers_microusd + extra : 0, 800);
+  const s = data || {};
+  const items = [
+    ['GPUs online', int(s.nodes_online ?? 0), `from ${s.sellers_online ?? 0} ${s.sellers_online === 1 ? 'seller' : 'sellers'}`],
+    ['Models live', int(s.models_live ?? 0), 'chat, embedding and decision'],
+    ['Requests / min', int(s.requests_per_min ?? 0), 'routed to the best free GPU'],
+    ['Paid to sellers', usd(Math.round(paid), 4), '90% of every request'],
+  ];
+  return (
+    <section className="wrap stats" aria-label="Live network">
+      <div className="stats-head">
+        <span className="livedot live">
+          <i />
+          Live network
+        </span>
+      </div>
+      <dl className="stats-grid">
+        {items.map(([label, value, note]) => (
+          <div key={label} className="stat">
+            <dt>{label}</dt>
+            <dd>
+              <RollingNumber value={value} className="stat-num" />
+            </dd>
+            <p>{note}</p>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function PriceTable() {
+  const { data } = useApi('/api/models', { interval: 30_000 });
+  const rows = listOf(data, 'models')
+    .filter((m) => !m.auto && m.sellers_online > 0)
+    .sort((a, b) => b.sellers_online - a.sellers_online)
+    .slice(0, 5);
+  return (
+    <div className="price-table">
+      <div className="pt-head">
+        <span>Model</span>
+        <span>From</span>
+        <span>GPUs</span>
+      </div>
+      {!data &&
+        Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="pt-row">
+            <span className="skeleton" style={{ height: 14, width: '70%' }} />
+          </div>
+        ))}
+      {rows.map((m) => {
+        const p = priceLabel(m.price_from, m.kind);
+        return (
+          <Link key={m.id} to={modelPath(m.id)} className="pt-row">
+            <span className="pt-model">
+              <span className="mono">{m.id}</span>
+              <small>{KINDS[m.kind]}</small>
+            </span>
+            <span className="num">
+              {p.amount}
+              <small>{p.unit}</small>
+            </span>
+            <span className="num">{m.sellers_online}</span>
+          </Link>
+        );
+      })}
+      {data && rows.length === 0 && <p className="pt-empty">No models are online right now.</p>}
+      <p className="pt-note">Sellers set their own prices. These are live.</p>
+    </div>
+  );
+}
+
+const Check = ({ children }) => (
+  <li>
+    <Icon name="check" size={14} />
+    {children}
+  </li>
+);
+
 export default function Landing() {
-  const net = useNetwork();
   const os = useMemo(detectOS, []);
-  const flagged = net.listings.find((l) => badgeOf(l.verification) === 'flagged');
   return (
     <main className="landing">
-      <section className="hero">
-        <div className="wrap hero-in">
-          <div className="hero-copy">
-            <p className="kicker">A cottage industry for AI</p>
-            <h1 className="hero-title">
-              Your computer
-              <br />
-              works the <em>night shift.</em>
-            </h1>
-            <p className="lede">Sell the models already running on your machine. Use models served from people&apos;s homes instead of one factory.</p>
-            <div className="hero-cta">
-              <Link to="/add" className="btn btn-primary">
-                Sell your computer <Icon name="arrow" />
-              </Link>
-              <Link to="/chat" className="btn btn-secondary">
-                Use models
-              </Link>
+      <Hero />
+      <NetworkStats />
+
+      <section className="wrap halves">
+        <article className="half">
+          <p className="eyebrow">
+            <Icon name="gpu" size={14} /> For GPU owners
+          </p>
+          <h2>Your GPU has room to spare.</h2>
+          <p className="muted">Install one small program. Moonlight finds the open models you already have and serves them in the VRAM your own apps leave free.</p>
+          <ul className="checks">
+            <Check>Runs alongside your games, editors and local AI</Check>
+            <Check>Finds models in Ollama, LM Studio, llama.cpp, vLLM and more</Check>
+            <Check>90% of every request, paid per token</Check>
+            <Check>Pause or change your prices anytime</Check>
+          </ul>
+          <div className="works">
+            <span className="label">Works with</span>
+            <div className="chips">
+              {['Ollama', 'LM Studio', 'llama.cpp', 'vLLM', 'Jan', 'LocalAI', 'KoboldCpp'].map((r) => (
+                <span key={r} className="tag">
+                  {r}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="hero-moon">
-            <Moon size={220} />
+          <CopyBox code={installCommand(os)} label={os === 'windows' ? 'PowerShell' : 'Terminal'} lang={os === 'windows' ? 'ps1' : 'sh'} compact />
+          <div className="row half-cta">
+            <Link to="/add" className="btn btn-primary">
+              Add your GPU <Icon name="arrow" />
+            </Link>
+          </div>
+        </article>
+        <article className="half">
+          <p className="eyebrow">
+            <Icon name="code" size={14} /> For developers
+          </p>
+          <h2>Open models, one API.</h2>
+          <p className="muted">Point the OpenAI SDK at Moonlight and pick a model, or let auto/* choose the best GPU that&apos;s free. Pay per token, nothing to provision.</p>
+          <ul className="checks">
+            <Check>OpenAI-compatible: change one line, the base URL</Check>
+            <Check>Chat, embeddings and typed decisions</Check>
+            <Check>Route to verified sellers only, if you prefer</Check>
+          </ul>
+          <PriceTable />
+          <CopyBox code={`client = OpenAI(base_url="${BASE}", api_key=KEY)\nclient.chat.completions.create(model="auto/chat-small", messages=msgs)`} label="Python" lang="py" compact />
+          <div className="row half-cta">
+            <Link to="/developers" className="btn btn-primary">
+              Get an API key <Icon name="arrow" />
+            </Link>
+            <Link to="/chat" className="btn btn-ghost">
+              Try it in chat
+            </Link>
+          </div>
+        </article>
+      </section>
+
+      <section className="wrap verify">
+        <div className="verify-copy">
+          <p className="eyebrow">
+            <Icon name="shield" size={14} /> Verification
+          </p>
+          <h2>Every seller gets checked.</h2>
+          <p className="muted">Hidden test jobs look like ordinary requests, so a seller can&apos;t tell a check from a customer. Answers are compared with a reference GPU or with other sellers.</p>
+          <div className="row">
+            <Link to="/trust" className="btn btn-ghost">
+              How verification works <Icon name="arrow" />
+            </Link>
           </div>
         </div>
-        <Village nodes={net.nodes} height={330} />
-      </section>
-
-      <Instruments />
-
-      <section className="wrap story">
-        <header className="story-head">
-          <p className="kicker">Steel &amp; steam, again</p>
-          <h2 className="title-lg">The work goes back to the cottages</h2>
-        </header>
-        <div className="story-body">
-          <p>
-            Before the mills, cloth was made at home. Merchants <em>put out</em> wool to cottages, families spun and wove it by the fire, and the merchant came back for the cloth.
-          </p>
-          <p>The factory won on coordination, not craft: one building, one clock, one owner. Today intelligence is made the same way, in a few datacenters.</p>
-          <p>
-            <strong>Moonlight does the coordinating.</strong> It routes each request to a free home computer, meters it, pays the owner, and quietly checks the work, so the
-            machines already in our homes can take the night shift.
-          </p>
-        </div>
-      </section>
-
-      <section className="wrap ways">
-        <div className="way">
-          <p className="kicker">Sell</p>
-          <h2 className="title-lg">Light the lamp</h2>
-          <ol className="steps">
-            <li>
-              <b>Install.</b> One line. No Node, no Docker.
-            </li>
-            <li>
-              <b>Approve.</b> Run <code>moonlight</code>, then approve the code it shows you.
-            </li>
-            <li>
-              <b>Earn.</b> We find the models you already have and list them at a fair price.
-            </li>
-          </ol>
-          <CopyBox code={installCommand(os)} label={os === 'windows' ? 'PowerShell' : 'Terminal'} lang={os === 'windows' ? 'ps1' : 'sh'} compact />
-          <Link to="/add" className="link">
-            Add your computer
-          </Link>
-        </div>
-        <div className="way">
-          <p className="kicker">Use</p>
-          <h2 className="title-lg">One key, every model</h2>
-          <ol className="steps">
-            <li>
-              <b>Chat</b> on the site with any model, or let <code>auto/chat-large</code> pick a free one.
-            </li>
-            <li>
-              <b>Call the API</b> with the OpenAI SDK. Change one line: the base URL.
-            </li>
-            <li>
-              <b>Pay per token,</b> starting with demo credit.
-            </li>
-          </ol>
-          <CopyBox
-            code={`client = OpenAI(base_url="${BASE}", api_key=KEY)\nclient.chat.completions.create(model="auto/chat-large", messages=msgs)`}
-            label="Python"
-            lang="py"
-            compact
-          />
-          <Link to="/chat" className="link">
-            Open the chat
-          </Link>
-        </div>
-      </section>
-
-      <section className="wrap trust-teaser">
-        <div className="trust-teaser-copy">
-          <p className="kicker">Trust</p>
-          <h2 className="title-lg">Every home gets inspected</h2>
-          <p className="muted">
-            We send hidden test jobs that look like ordinary requests and compare the answers with a reference machine. A seller can&apos;t tell a test from a customer.
-          </p>
-          <Link to="/trust" className="link">
-            How checks work
-          </Link>
-        </div>
-        <ul className="badge-legend">
+        <ul className="verify-grid">
           {['verified', 'consistent', 'new', 'flagged'].map((k) => (
             <li key={k}>
               <Badge state={k} size="lg" withTip={false} />
-              <span>{BADGE_COPY[k].tip}</span>
+              <p>{BADGE_COPY[k].tip}</p>
             </li>
           ))}
         </ul>
-        {flagged && (
-          <div className="teaser-flag">
-            <Stamp small>Flagged</Stamp>
-            <p>
-              <b>{flagged.node.name}</b> listed <code>{flagged.model_id}</code> but answered like a smaller model. Suspended, earnings held.
-            </p>
-          </div>
-        )}
+      </section>
+
+      <section className="wrap cta-band">
+        <h2>Put your spare VRAM to work.</h2>
+        <p className="muted">A few minutes to set up. Keep using your computer the whole time.</p>
+        <div className="row center">
+          <Link to="/add" className="btn btn-primary btn-lg">
+            Start earning <Icon name="arrow" />
+          </Link>
+          <Link to="/models" className="btn btn-ghost btn-lg">
+            See models &amp; prices
+          </Link>
+        </div>
       </section>
     </main>
   );

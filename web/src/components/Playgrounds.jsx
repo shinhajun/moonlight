@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, serviceError, usd, ms, hardware, refreshMe } from '../api.js';
 import { resolveNode } from './ChatCore.jsx';
-import { Badge, House } from './ui.jsx';
+import { Badge, Machine } from './ui.jsx';
 
 async function metered(path, body) {
   const t0 = performance.now();
@@ -23,8 +23,8 @@ function Receipt({ meta }) {
   return (
     <div className="receipt">
       <span className="receipt-who">
-        <House lit size={14} />
-        <b>{meta.node_name || 'a community computer'}</b>
+        <Machine online size={14} />
+        <b>{meta.node_name || 'a seller’s GPU'}</b>
         {meta.hardware && <span className="faint">{meta.hardware}</span>}
       </span>
       <span className="receipt-facts num">
@@ -180,7 +180,7 @@ export function DecisionPlayground({ model, filters }) {
       <button className="btn btn-primary" disabled={busy || !qs.length}>
         {busy ? 'Deciding…' : 'Decide'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : serviceError(error)}</p>}
+      {error && <p className="form-error">{error.code === 'no_capacity' ? `No GPU is serving ${model} right now.` : serviceError(error)}</p>}
       {res && (
         <div className="answers" key={res.meta.total_ms}>
           {Object.entries(res.data.answers).map(([n, a]) => (
@@ -195,8 +195,8 @@ export function DecisionPlayground({ model, filters }) {
 
 // ---------------------------------------------------------------- embeddings
 
-// Draws a vector as a Jacquard punch card: hole size is magnitude, filled holes are positive.
-function PunchCard({ vec }) {
+// Draws a vector as a dot map: dot size is magnitude, filled dots are positive, rings negative.
+function VectorMap({ vec }) {
   const ref = useRef(null);
   useEffect(() => {
     const c = ref.current;
@@ -211,8 +211,8 @@ function PunchCard({ vec }) {
     const g = c.getContext('2d');
     g.scale(dpr, dpr);
     const css = getComputedStyle(c);
-    const ink = css.getPropertyValue('--ink').trim();
-    const lamp = css.getPropertyValue('--brass').trim();
+    const fill = css.getPropertyValue('--accent').trim();
+    const ring = css.getPropertyValue('--fg-3').trim();
     const peak = Math.max(...vec.map(Math.abs)) || 1;
     vec.forEach((v, i) => {
       const x = (i % cols) * cell + cell / 2;
@@ -221,16 +221,16 @@ function PunchCard({ vec }) {
       g.beginPath();
       g.arc(x, y, r, 0, Math.PI * 2);
       if (v >= 0) {
-        g.fillStyle = ink;
+        g.fillStyle = fill;
         g.fill();
       } else {
-        g.strokeStyle = lamp;
+        g.strokeStyle = ring;
         g.lineWidth = 1.2;
         g.stroke();
       }
     });
   }, [vec]);
-  return <canvas ref={ref} className="punchcard" role="img" aria-label={`Embedding with ${vec?.length} dimensions`} />;
+  return <canvas ref={ref} className="vecmap" role="img" aria-label={`Embedding with ${vec?.length} dimensions`} />;
 }
 
 const cosine = (a, b) => {
@@ -279,27 +279,27 @@ export function EmbeddingPlayground({ model }) {
       <button className="btn btn-primary" disabled={busy || !a.trim()}>
         {busy ? 'Embedding…' : 'Embed'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : serviceError(error)}</p>}
+      {error && <p className="form-error">{error.code === 'no_capacity' ? `No GPU is serving ${model} right now.` : serviceError(error)}</p>}
       {v && (
         <div className="embed-out">
           <div className="embed-facts">
             <div>
-              <span className="kicker">Dimensions</span>
+              <span className="label">Dimensions</span>
               <b className="num">{v.length}</b>
             </div>
             <div>
-              <span className="kicker">First values</span>
+              <span className="label">First values</span>
               <code className="vec-head">[{v.slice(0, 6).map((x) => x.toFixed(4)).join(', ')}, …]</code>
             </div>
             {vecs[1] && (
               <div>
-                <span className="kicker">Cosine similarity</span>
+                <span className="label">Cosine similarity</span>
                 <b className="num">{cosine(vecs[0], vecs[1]).toFixed(3)}</b>
               </div>
             )}
           </div>
-          <PunchCard vec={v} />
-          <p className="faint small">Punched holes are positive values, rings are negative; size is magnitude. Jacquard&apos;s loom read cards like this in 1804.</p>
+          <VectorMap vec={v} />
+          <p className="faint xs">Each dot is one dimension: filled for positive values, rings for negative, size for magnitude.</p>
           <Receipt meta={res.meta} />
         </div>
       )}

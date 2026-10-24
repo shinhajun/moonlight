@@ -32,21 +32,29 @@ function route(path) {
   return [NotFound];
 }
 
-export function Crescent({ size = 22 }) {
+export function Logo({ size = 22 }) {
   return (
-    <svg className="crescent" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      <path d="M15.2 2.6A9.6 9.6 0 1 0 21.4 17 7.8 7.8 0 0 1 15.2 2.6z" fill="currentColor" />
+    <svg className="logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <defs>
+        <linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--accent-2)" />
+          <stop offset="1" stopColor="var(--accent)" />
+        </linearGradient>
+      </defs>
+      <path d="M15.4 2.4A10 10 0 1 0 21.6 16.9 8 8 0 0 1 15.4 2.4z" fill="url(#logo-g)" />
     </svg>
   );
 }
 
 function ThemeToggle() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'night');
+  const [theme, setTheme] = useState(() => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'));
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+  const dark = theme === 'dark';
+  const label = `Switch to ${dark ? 'light' : 'dark'} mode`;
   const flip = () => {
-    const next = theme === 'night' ? 'day' : 'night';
+    const next = dark ? 'light' : 'dark';
     setTheme(next);
     try {
       localStorage.setItem('ml-theme', next);
@@ -54,22 +62,9 @@ function ThemeToggle() {
       /* not persisted */
     }
   };
-  const night = theme === 'night';
-  const label = `Switch to ${night ? 'day' : 'night'} shift`;
   return (
-    <button type="button" className="shift-toggle" onClick={flip} aria-pressed={night} aria-label={label} title={label}>
-      <span className="shift-track" aria-hidden>
-        <svg className="sun" viewBox="0 0 16 16" width="14" height="14">
-          <circle cx="8" cy="8" r="3.2" fill="currentColor" />
-          {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
-            <line key={a} x1="8" y1="1.2" x2="8" y2="3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" transform={`rotate(${a} 8 8)`} />
-          ))}
-        </svg>
-        <svg className="moon" viewBox="0 0 24 24" width="13" height="13">
-          <path d="M15.2 2.6A9.6 9.6 0 1 0 21.4 17 7.8 7.8 0 0 1 15.2 2.6z" fill="currentColor" />
-        </svg>
-        <span className="shift-knob" />
-      </span>
+    <button type="button" className="icon-btn theme-toggle" onClick={flip} aria-label={label} title={label}>
+      <Icon name={dark ? 'moon' : 'sun'} size={16} />
     </button>
   );
 }
@@ -151,7 +146,7 @@ function Masthead({ path }) {
     <header className="masthead" ref={menuRef}>
       <div className="masthead-in wrap">
         <Link to="/" className="wordmark" aria-label="Moonlight home">
-          <Crescent />
+          <Logo />
           <span>Moonlight</span>
         </Link>
         <nav className="nav" aria-label="Main">
@@ -171,11 +166,11 @@ function Masthead({ path }) {
               </Link>
             )
           )}
-          <Link to="/add" className="nav-sell" aria-current={at('/add')}>
-            Sell your computer
+          <Link to="/add" className="btn btn-primary btn-sm nav-sell" aria-current={at('/add')}>
+            Start earning
           </Link>
           <ThemeToggle />
-          <button type="button" className="menu-btn" aria-expanded={menu} aria-controls="mobile-menu" aria-label={menu ? 'Close menu' : 'Open menu'} onClick={() => setMenu((m) => !m)}>
+          <button type="button" className="icon-btn menu-btn" aria-expanded={menu} aria-controls="mobile-menu" aria-label={menu ? 'Close menu' : 'Open menu'} onClick={() => setMenu((m) => !m)}>
             <span className={`burger ${menu ? 'x' : ''}`} aria-hidden>
               <i />
               <i />
@@ -215,7 +210,7 @@ function Masthead({ path }) {
               me === null && <Link to={signIn}>Sign in</Link>
             )}
             <Link to="/add" className="btn btn-primary">
-              Sell your computer <Icon name="arrow" />
+              Start earning <Icon name="arrow" />
             </Link>
           </div>
         </div>
@@ -243,27 +238,28 @@ function Footer() {
   return (
     <footer className="footer">
       <div className="wrap footer-in">
-        <div className="footer-mark">
-          <Crescent size={28} />
-          <p>
-            <b>Moonlight</b> is a cottage industry for AI: many homes producing, instead of one factory.
-          </p>
+        <div className="footer-brand">
+          <Link to="/" className="wordmark" aria-label="Moonlight home">
+            <Logo />
+            <span>Moonlight</span>
+          </Link>
+          <p>Earn from your spare GPU. Use open models for less.</p>
         </div>
-        <div className="footer-cols">
+        <nav className="footer-cols" aria-label="Footer">
           <div>
             <h4>Use</h4>
             <Link to="/chat">Chat</Link>
-            <Link to="/models">Model catalog</Link>
-            <Link to="/developers">API keys</Link>
+            <Link to="/models">Models &amp; pricing</Link>
+            <Link to="/developers">API</Link>
           </div>
           <div>
-            <h4>Sell</h4>
-            <Link to="/add">Add a computer</Link>
-            <Link to="/me/sell">My computers</Link>
-            <Link to="/trust">How checks work</Link>
+            <h4>Earn</h4>
+            <Link to="/add">Add a GPU</Link>
+            <Link to="/me/sell">Dashboard</Link>
+            <Link to="/trust">Verification</Link>
           </div>
           <div>
-            <h4>Source</h4>
+            <h4>Project</h4>
             <a href="https://github.com/shinhajun/moonlight" target="_blank" rel="noreferrer">
               GitHub
             </a>
@@ -271,8 +267,8 @@ function Footer() {
               Protocol
             </a>
           </div>
-        </div>
-        <p className="footer-small">Built for SBUHacks 2026 · Steel &amp; Steam. Demo credit only, no real payments.</p>
+        </nav>
+        <p className="footer-small">Built at SBUHacks 2026. Demo credit only, no real payments yet.</p>
       </div>
     </footer>
   );
@@ -281,13 +277,17 @@ function Footer() {
 function NotFound() {
   return (
     <main className="wrap page notfound">
-      <p className="kicker">404</p>
-      <h1>Nobody home at this address.</h1>
-      <p>
-        <Link to="/" className="btn btn-secondary">
-          Back to the village
+      <p className="eyebrow">404</p>
+      <h1>This page doesn&apos;t exist.</h1>
+      <p className="muted">The link may be old, or the model you were looking for isn&apos;t listed any more.</p>
+      <div className="row">
+        <Link to="/" className="btn btn-primary">
+          Go home
         </Link>
-      </p>
+        <Link to="/models" className="btn btn-ghost">
+          Browse models
+        </Link>
+      </div>
     </main>
   );
 }

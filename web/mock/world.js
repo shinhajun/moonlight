@@ -92,6 +92,10 @@ function makeNode(u, spec) {
     ram_gb: spec.ram_gb, gpu: spec.gpu, vram_gb: spec.vram_gb, online: spec.online ?? true, inflight: 0, trusted: !!spec.trusted,
     agent_version: '0.2.0', last_seen: now(), speed: spec.speed ?? 50, ttft: spec.ttft ?? 300, flaky: !!spec.flaky, cheat: spec.cheat || null,
     earnings: { total: 0, today: 0 },
+    // v0.5: spare-VRAM accounting. Apple Silicon reports no free/others numbers.
+    paused: false, reason: null, busyCycle: !!spec.busyCycle,
+    vram_budget_gb: spec.vram_gb ? (spec.budget === undefined ? Math.round(spec.vram_gb * 0.75) : spec.budget) : null,
+    others: spec.vram_gb ? +(spec.vram_gb * rand(0.12, 0.35)).toFixed(1) : 0,
   };
   state.nodes.set(node.node_id, node);
   return node;
@@ -128,7 +132,7 @@ const SEED = [
   { handle: 'hajun', name: 'Hajun Shin', login: DEMO_LOGIN, nodes: [
     { name: "Hajun's MacBook Pro", os: 'darwin', arch: 'arm64', cpu: 'Apple M3 Max', ram_gb: 64, gpu: 'M3 Max 40-core', vram_gb: 48, speed: 62, ttft: 280,
       models: [['qwen3.5:35b-a3b'], ['qwen2.5:3b'], ['nomic-embed-text:v1.5'], ['laya-base', { runtime: 'laya' }], ['hajun/support-triage', { runtime: 'laya' }], ['codestral:22b'], ['nemo-storyteller-12b', { runtime: 'lmstudio' }]] },
-    { name: 'Basement Linux box', os: 'linux', arch: 'x64', cpu: 'Ryzen 5 5600', ram_gb: 32, gpu: 'RTX 3060', vram_gb: 12, speed: 55, ttft: 300,
+    { name: 'Basement Linux box', os: 'linux', arch: 'x64', cpu: 'Ryzen 5 5600', ram_gb: 32, gpu: 'RTX 3060', vram_gb: 12, speed: 55, ttft: 300, busyCycle: true, budget: 8,
       models: [['gemma4:26b', { paused: true }], ['llama3.2:3b'], ['llama3.1-abliterated:8b', { runtime: 'llamacpp' }]] },
   ] },
   { handle: 'vada', name: 'vada-ai', nodes: [
@@ -190,15 +194,34 @@ function seedHistory(u) {
 // ---------------------------------------------------------------- views
 
 function isServing(l) {
-  return l.policy === 'live' && !l.paused && !l.suspended && state.nodes.get(l.node_id).online;
+  const n = state.nodes.get(l.node_id);
+  return l.policy === 'live' && !l.paused && !l.suspended && n.online && !n.paused;
 }
 function isListed(l) {
   return l.policy === 'live';
 }
 
+// What the agent would report: your apps, Moonlight's loaded models (largest live one, kept warm), spare, budget.
+export function vramOf(n) {
+  if (!n.vram_gb) return null;
+  const apple = n.os === 'darwin';
+  const sizes = [...state.listings.values()].filter((l) => l.node_id === n.node_id && l.policy === 'live' && !l.paused).map((l) => (META[l.model_id]?.size_bytes || 0) / 1e9);
+  const cap = n.vram_budget_gb ?? n.vram_gb;
+  const ml = n.paused ? 0 : Math.min(cap, Math.max(0, ...sizes) * 1.08);
+  const others = Math.min(n.vram_gb - ml, n.others);
+  return {
+    total_gb: n.vram_gb,
+    free_gb: apple ? null : +Math.max(0, n.vram_gb - others - ml).toFixed(1),
+    moonlight_gb: +ml.toFixed(1),
+    others_gb: apple ? null : +others.toFixed(1),
+    budget_gb: n.vram_budget_gb,
+  };
+}
+
 export const publicNode = (n) => ({
   node_id: n.node_id, name: n.name, os: n.os, arch: n.arch, cpu: n.cpu, ram_gb: n.ram_gb, gpu: n.gpu, vram_gb: n.vram_gb,
   online: n.online, inflight: n.inflight, trusted: n.trusted, agent_version: n.agent_version, last_seen: n.last_seen,
+  paused: n.paused, reason: n.reason, vram: vramOf(n), vram_budget_gb: n.vram_budget_gb,
 });
 const sellerOf = (l) => {
   const u = state.users.get(l.user_id);
@@ -512,7 +535,7 @@ function vlogEntry(l, passed, ts = now()) {
   return { ts, listing_id: l.listing_id, model_id: l.model_id, method, passed, metric, score, threshold, state_after: displayState(l) };
 }
 
-const nodeEvent = (n) => ({ ts: now(), node_id: n.node_id, node_name: n.name, seller_id: n.user_id, seller_name: state.users.get(n.user_id).name, online: n.online, gpu: n.gpu });
+const nodeEvent = (n) => ({ ts: now(), node_id: n.node_id, node_name: n.name, seller_id: n.user_id, seller_name: state.users.get(n.user_id).name, online: n.online, gpu: n.gpu, paused: n.paused, reason: n.reason, vram: vramOf(n) });
 
 // Runs one verification check on a listing and updates its state like the gateway would.
 export function verify(l, forcePass) {
@@ -583,6 +606,24 @@ export function startTraffic() {
   setInterval(() => {
     for (const l of state.listings.values()) if (isServing(l) && l.verification.state === 'new' && Math.random() < 0.35) verify(l, true);
   }, 7000);
+  // Your apps' VRAM drifts; the demo seller's Linux box is sometimes busy with its owner's own work.
+  setInterval(() => {
+    for (const n of state.nodes.values()) {
+      if (!n.vram_gb) continue;
+      n.others = +Math.min(n.vram_gb * 0.6, Math.max(n.vram_gb * 0.08, n.others + (Math.random() - 0.5) * n.vram_gb * 0.06)).toFixed(1);
+    }
+  }, 3000);
+  let busy = false;
+  setInterval(() => {
+    busy = !busy;
+    for (const n of state.nodes.values()) {
+      if (!n.busyCycle) continue;
+      n.paused = busy;
+      n.reason = busy ? 'owner_busy' : null;
+      if (busy) n.others = +(n.vram_gb * 0.8).toFixed(1);
+      broadcast('node', nodeEvent(n));
+    }
+  }, 35_000);
   // Ana's laptop lid opens and closes.
   setInterval(() => {
     for (const n of state.nodes.values()) {

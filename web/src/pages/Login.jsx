@@ -171,9 +171,9 @@ export default function Login() {
   return (
     <main className="wrap page login-page">
       <div className="login-copy">
-        <p className="kicker">My Moonlight</p>
-        <h1 className="title-xl">Clock in.</h1>
-        <p className="lede">One account to chat with any model, call the API, and sell the models on your own computers.</p>
+        <p className="eyebrow">Moonlight</p>
+        <h1 className="h1">Sign in or create an account.</h1>
+        <p className="lede">One account to use open models through chat and the API, and to earn from the spare VRAM on your own GPUs.</p>
       </div>
       <div className="panel login-panel">
         <button type="button" className={`btn btn-primary btn-google ${nudge ? 'nudge' : ''}`} onClick={google} disabled={busy}>

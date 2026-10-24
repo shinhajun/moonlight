@@ -11,7 +11,7 @@ import { join } from 'node:path';
 const arg = (k, d) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=')[1] ?? d;
 const BASE = arg('base', 'http://localhost:5173');
 const ONLY = arg('only', '')?.split(',').filter(Boolean);
-const THEMES = arg('themes', 'night,day').split(',');
+const THEMES = arg('themes', 'dark,light').split(',');
 const SIZES = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } };
 const sizes = arg('sizes', 'desktop,mobile').split(',');
 const OUT = new URL('../.e2e/', import.meta.url).pathname;
@@ -20,7 +20,8 @@ const ACCOUNT = arg('account', '');
 mkdirSync(OUT, { recursive: true });
 
 const cached = join(homedir(), '.cache/ms-playwright/chromium-1248/chrome-linux64/chrome');
-const browser = await chromium.launch({ executablePath: process.env.CHROME || (existsSync(cached) ? cached : undefined) });
+// SwiftShader lets headless Chrome render the WebGL hero.
+const browser = await chromium.launch({ executablePath: process.env.CHROME || (existsSync(cached) ? cached : undefined), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 
 // With --account, one session is created up front and every context starts from it.
 let shared = null;
@@ -45,8 +46,9 @@ const settle = (page, ms = 1200) => page.waitForTimeout(ms);
 
 const SHOTS = {
   landing: async (page) => {
-    await page.goto(`${BASE}/`);
-    await settle(page, 3500);
+    await page.goto(`${BASE}/?gpu=3d`);
+    await page.waitForSelector('.gpu-stage.ready', { timeout: 30000 }).catch(() => {});
+    await settle(page, 3000);
   },
   models: async (page) => {
     await page.goto(`${BASE}/models`);
@@ -70,14 +72,14 @@ const SHOTS = {
     await page.goto(`${BASE}/models/nomic-embed-text:v1.5`);
     await settle(page, 600);
     await page.getByRole('button', { name: 'Embed' }).click();
-    await page.waitForSelector('.punchcard', { timeout: 8000 });
+    await page.waitForSelector('.vecmap', { timeout: 8000 });
     await settle(page, 1200);
   },
   chat: async (page) => {
     await login(page);
     await page.goto(`${BASE}/chat?model=${arg('chat-model', 'qwen3.5:35b-a3b')}`);
     await settle(page, 800);
-    await page.getByLabel('Message').fill('In two sentences: what was the putting-out system?');
+    await page.getByLabel('Message').fill('How do I earn with spare VRAM?');
     await page.keyboard.press('Enter');
     await page.waitForSelector('.receipt, .capacity, .notice.warn', { timeout: 90000 });
     await settle(page, 1500);
@@ -136,6 +138,10 @@ const SHOTS = {
     await page.goto(`${BASE}/trust`);
     await settle(page, 2000);
   },
+  notfound: async (page) => {
+    await page.goto(`${BASE}/this-page-does-not-exist`);
+    await settle(page, 600);
+  },
   login: async (page) => {
     await page.goto(`${BASE}/login`);
     await settle(page, 600);
@@ -146,7 +152,7 @@ const names = ONLY.length ? ONLY : Object.keys(SHOTS);
 for (const theme of THEMES) {
   for (const size of sizes) {
     for (const name of names) {
-      const ctx = await browser.newContext({ viewport: SIZES[size], deviceScaleFactor: size === 'mobile' ? 2 : 1, colorScheme: theme === 'night' ? 'dark' : 'light', ...(shared && { storageState: shared }) });
+      const ctx = await browser.newContext({ viewport: SIZES[size], deviceScaleFactor: size === 'mobile' ? 2 : 1, colorScheme: theme, ...(shared && { storageState: shared }) });
       await ctx.addInitScript((t) => localStorage.setItem('ml-theme', t), theme);
       const page = await ctx.newPage();
       const errors = [];

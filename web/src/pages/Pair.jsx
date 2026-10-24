@@ -4,18 +4,18 @@ import { Link, navigate } from '../router.jsx';
 import { loginPath } from './Login.jsx';
 import { formatCode } from './AddComputer.jsx';
 import ModelsReview from '../components/ModelsReview.jsx';
-import { Icon } from '../components/ui.jsx';
+import { Icon, Machine } from '../components/ui.jsx';
 
 function CodeTiles({ code }) {
   return (
-    <div className="code-tiles" aria-label={`Code ${code}`}>
+    <div className="code-tiles mono" aria-label={`Code ${code}`}>
       {code.split('').map((ch, i) =>
         ch === '-' ? (
           <span key={i} className="code-dash" aria-hidden>
             –
           </span>
         ) : (
-          <span key={i} className="code-tile" style={{ animationDelay: `${i * 55}ms` }} aria-hidden>
+          <span key={i} className="code-tile" style={{ animationDelay: `${i * 40}ms` }} aria-hidden>
             {ch}
           </span>
         ),
@@ -27,28 +27,13 @@ function CodeTiles({ code }) {
 function ComputerCard({ node, lit }) {
   return (
     <div className={`computer-card ${lit ? 'lit' : ''}`}>
-      <svg className="computer-house" viewBox="0 0 120 100" aria-hidden>
-        <path className="ch-roof" d="M8 46L60 8l52 38z" />
-        <rect className="ch-chim" x="82" y="14" width="10" height="22" />
-        <rect className="ch-body" x="18" y="44" width="84" height="52" />
-        <rect className="ch-win" x="34" y="56" width="22" height="18" />
-        <rect className="ch-win ch-win2" x="66" y="56" width="22" height="18" />
-        <rect className="ch-door" x="54" y="74" width="12" height="22" />
-        {lit && (
-          <g className="ch-steam">
-            <circle cx="87" cy="8" r="4" />
-            <circle cx="92" cy="0" r="6" />
-          </g>
-        )}
-      </svg>
+      <Machine online={lit} size={56} />
       <div className="computer-spec">
         <h2 className="computer-name">{node.name}</h2>
         <dl>
           <div>
-            <dt>System</dt>
-            <dd>
-              {osLabel(node.os)} · {node.arch}
-            </dd>
+            <dt>Graphics</dt>
+            <dd>{hardware(node)}</dd>
           </div>
           <div>
             <dt>Processor</dt>
@@ -59,8 +44,10 @@ function ComputerCard({ node, lit }) {
             <dd>{node.ram_gb} GB</dd>
           </div>
           <div>
-            <dt>Graphics</dt>
-            <dd>{hardware(node)}</dd>
+            <dt>System</dt>
+            <dd>
+              {osLabel(node.os)} · {node.arch}
+            </dd>
           </div>
         </dl>
       </div>
@@ -77,9 +64,9 @@ function Discovery({ nodeId, name }) {
     <div className="discovery">
       {!ready ? (
         <div className="discovery-wait">
-          <span className="spinner-gear" aria-hidden />
+          <span className="spinner" aria-hidden />
           <div>
-            <h3 className="title-md">Connecting to {name}…</h3>
+            <h3 className="h3">Connecting to {name}…</h3>
             <p className="muted">Your terminal will say “Approved”. We&apos;re asking it which models it has.</p>
           </div>
         </div>
@@ -89,7 +76,7 @@ function Discovery({ nodeId, name }) {
           <div className="discovery-next">
             <p className="muted">Live models start taking jobs now. You can change prices or pause anything later.</p>
             <Link to="/me/sell" className="btn btn-primary">
-              Go to my computers <Icon name="arrow" />
+              Go to your dashboard <Icon name="arrow" />
             </Link>
           </div>
         </>
@@ -131,8 +118,8 @@ export default function Pair({ code }) {
   if (!valid || error?.status === 404) {
     return (
       <main className="wrap page narrow-page">
-        <p className="kicker">Pair a computer</p>
-        <h1 className="title-lg">That code doesn&apos;t match a computer.</h1>
+        <p className="eyebrow">Add a GPU</p>
+        <h1 className="h2">That code doesn&apos;t match a computer.</h1>
         <p className="muted">Check the code your terminal shows. Codes look like ABCD-1234 and expire after 10 minutes.</p>
         <form
           className="code-form"
@@ -163,7 +150,7 @@ export default function Pair({ code }) {
     <main className="wrap page pair-page">
       <div className={`pair-card ${status}`}>
         <div className="pair-top">
-          <p className="kicker">{status === 'approved-now' ? 'Approved' : 'Pair a computer'}</p>
+          <p className="eyebrow">{status === 'approved-now' ? 'Approved' : 'Add a GPU'}</p>
           <CodeTiles code={code} />
           {status === 'pending' && <p className="faint small">Check that this matches the code in your terminal.</p>}
         </div>
@@ -183,7 +170,7 @@ export default function Pair({ code }) {
                 {err && <p className="form-error">{err}</p>}
                 <div className="pair-buttons">
                   <button type="button" className="btn btn-primary" onClick={approve} disabled={busy}>
-                    {busy ? 'Approving…' : 'Approve and light the lamp'}
+                    {busy ? 'Approving…' : 'Approve'}
                   </button>
                   <Link to="/" className="ghost">
                     This isn&apos;t my computer
@@ -207,7 +194,7 @@ export default function Pair({ code }) {
           <div className="pair-action">
             <h1 className="pair-q">{node.name} is already approved.</h1>
             <Link to="/me/sell" className="btn btn-secondary">
-              See my computers
+              Open your dashboard
             </Link>
           </div>
         )}
@@ -215,7 +202,7 @@ export default function Pair({ code }) {
         {status === 'approved-now' && (
           <div className="pair-action pair-done">
             <h1 className="pair-q">
-              <span>{approved.name}</span> is on the night shift.
+              <span>{approved.name}</span> is connected.
             </h1>
           </div>
         )}

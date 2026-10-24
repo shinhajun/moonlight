@@ -28,7 +28,7 @@ function Keys({ me }) {
     <div className="keys">
       {fresh && (
         <div className="key-once" role="status">
-          <p className="kicker">New key · shown once</p>
+          <p className="label">New key · shown once</p>
           <CopyBox code={fresh.secret} lang="key" />
           <p className="small">Copy it now and keep it somewhere safe. We store only a hash, so this is the last time you&apos;ll see it.</p>
           <button type="button" className="btn btn-small btn-secondary" onClick={() => setFresh(null)}>
@@ -96,19 +96,19 @@ export default function Developers() {
     <main className="wrap page dev-page">
       <header className="page-head dev-head">
         <div>
-          <p className="kicker">Developers</p>
-          <h1 className="title-xl">One key. Every model.</h1>
+          <p className="eyebrow">Developers</p>
+          <h1 className="h1">One key. Every open model.</h1>
           <p className="lede">Moonlight speaks the OpenAI API. Point your SDK at our base URL, and the <code>model</code> field picks who answers.</p>
         </div>
         <div className="base-url">
-          <span className="kicker">Base URL</span>
+          <span className="label">Base URL</span>
           <CopyBox code={BASE} lang="url" compact />
         </div>
       </header>
 
       <div className="dev-grid">
         <section className="dev-keys">
-          <h2 className="title-md">API keys</h2>
+          <h2 className="h3">API keys</h2>
           {me ? (
             <Keys me={me} />
           ) : me === null ? (
@@ -117,7 +117,7 @@ export default function Developers() {
             <div className="skeleton" style={{ height: 160 }} />
           )}
           <div className="dev-notes">
-            <h3 className="title-md">Choosing a model</h3>
+            <h3 className="h3">Choosing a model</h3>
             <table className="ledger">
               <tbody>
                 {AUTO_MODELS.map((a) => (
@@ -160,7 +160,7 @@ export default function Developers() {
 
           <div className="dev-ref">
             <div>
-              <h3 className="title-md">Moonlight options</h3>
+              <h3 className="h3">Moonlight options</h3>
               <p className="small muted">
                 Add a <code>moonlight</code> object to any request (Python: <code>extra_body</code>).
               </p>
@@ -169,7 +169,7 @@ export default function Developers() {
                   <dt>
                     <code>verified_only</code>
                   </dt>
-                  <dd>Only computers that passed inspection.</dd>
+                  <dd>Only GPUs that passed verification.</dd>
                 </div>
                 <div>
                   <dt>
@@ -187,12 +187,12 @@ export default function Developers() {
                   <dt>
                     <code>max_wait_s</code>
                   </dt>
-                  <dd>How long to wait in line when every computer is busy (default 30, up to 120).</dd>
+                  <dd>How long to wait in line when every GPU is busy (default 30, up to 120).</dd>
                 </div>
               </dl>
             </div>
             <div>
-              <h3 className="title-md">When it&apos;s busy</h3>
+              <h3 className="h3">When it&apos;s busy</h3>
               <dl className="params">
                 <div>
                   <dt>Queued</dt>
@@ -209,7 +209,7 @@ export default function Developers() {
                 <div>
                   <dt>Failover</dt>
                   <dd>
-                    If a computer drops mid-answer, another continues it. The final chunk lists <code>moonlight.failovers</code>.
+                    If a GPU drops mid-answer, another continues it. The final chunk lists <code>moonlight.failovers</code>.
                   </dd>
                 </div>
                 <div>
@@ -222,7 +222,7 @@ export default function Developers() {
           <p className="notice">
             <Icon name="eye" />
             <span>
-              Requests run on community computers, and the seller can see your prompt. Don&apos;t send secrets. <Link to="/trust">How we check sellers</Link>
+              Requests run on sellers&apos; GPUs, and the seller can see your prompt. Don&apos;t send secrets. <Link to="/trust">How we check sellers</Link>
             </span>
           </p>
         </section>

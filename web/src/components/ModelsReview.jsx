@@ -95,7 +95,7 @@ function StateCell({ row, onPatch }) {
   if (row.policy === 'needs_attestation') {
     return (
       <div className="state-cell attest">
-        <span className="tag tag-lamp">Needs your OK</span>
+        <span className="tag tag-accent">Needs your OK</span>
         <label className="check">
           <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
           <span>I have the right to sell access to this model.</span>

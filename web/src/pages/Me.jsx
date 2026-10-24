@@ -3,7 +3,7 @@ import { ago, badgeOf, clock, hardware, int, ms, osLabel, signOut, useApi, useEv
 import { Link, modelPath, navigate } from '../router.jsx';
 import { loginPath } from './Login.jsx';
 import ModelsReview from '../components/ModelsReview.jsx';
-import { Badge, House, Icon, Odometer, Stamp, useNow, useTween } from '../components/ui.jsx';
+import { Badge, Machine, Icon, RollingNumber, useNow, useTween } from '../components/ui.jsx';
 
 const METHOD_LABEL = { canary: 'Canary', replay: 'Replay', peer: 'Peer check', consistency: 'Consistency' };
 const METRIC = {
@@ -13,7 +13,17 @@ const METRIC = {
   match: (s) => (s >= 1 ? 'same answer twice' : 'answers differed'),
 };
 
-function EarningsMeter({ me }) {
+function Kpi({ label, children, note, tone }) {
+  return (
+    <div className={`kpi ${tone ? `kpi-${tone}` : ''}`}>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+      {note && <p>{note}</p>}
+    </div>
+  );
+}
+
+function EarningsKpis({ me, nodes }) {
   const [extra, setExtra] = useState({ total: 0, held: 0 });
   useEffect(() => setExtra({ total: 0, held: 0 }), [me.earnings.total, me.earnings.held]);
   useEvents((type, d) => {
@@ -24,94 +34,159 @@ function EarningsMeter({ me }) {
   const total = useTween(me.earnings.total + extra.total, 900);
   const today = me.earnings.today + extra.total;
   const held = me.earnings.held + extra.held;
+  const all = (nodes || []).flatMap((n) => n.models);
+  const live = all.filter((m) => m.policy === 'live').length;
+  const online = (nodes || []).filter((n) => n.online).length;
   return (
-    <section className="meter" aria-label="Earnings">
-      <div className="meter-main">
-        <span className="kicker">Earned on the night shift</span>
-        <Odometer value={usd(Math.round(total), 6)} className="meter-odo" />
-        <span className="meter-sub">Ticks up as your computers answer requests. 90% of each request is yours.</span>
-      </div>
-      <dl className="meter-side">
-        <div>
-          <dt>Today</dt>
-          <dd className="num">{usd(today, 4)}</dd>
-        </div>
-        <div className={held > 0 ? 'held' : ''}>
-          <dt>Held</dt>
-          <dd className="num">{usd(held, 4)}</dd>
-          {held > 0 && <p className="held-note">Earnings from flagged listings wait here until they pass inspection again.</p>}
-        </div>
-        <div>
-          <dt>Payouts</dt>
-          <dd className="faint small">Demo credit only. Real payouts come later.</dd>
-        </div>
-      </dl>
-    </section>
+    <dl className="kpis">
+      <Kpi label="Total earned" note="90% of every request your GPUs serve" tone="accent">
+        <RollingNumber value={usd(Math.round(total), 6)} className="kpi-big" />
+      </Kpi>
+      <Kpi label="Today">
+        <span className="num kpi-num">{usd(today, 4)}</span>
+      </Kpi>
+      <Kpi label="Held" tone={held > 0 ? 'bad' : undefined} note={held > 0 ? 'From flagged listings, until they pass again' : 'Nothing held'}>
+        <span className="num kpi-num">{usd(held, 4)}</span>
+      </Kpi>
+      <Kpi label="Live models" note={nodes ? `${online} of ${nodes.length} GPUs online` : ' '}>
+        <span className="num kpi-num">{nodes ? live : '—'}</span>
+      </Kpi>
+    </dl>
   );
 }
 
-function ComputerCard({ node, now }) {
-  const models = node.models || [];
-  const live = models.filter((m) => m.policy === 'live').length;
-  const flagged = models.some((m) => badgeOf(m.verification) === 'flagged');
+const PAUSE = { owner_busy: 'Owner is using their computer', manual: 'Paused by seller' };
+
+// The core promise, from the agent's live numbers: your apps, Moonlight, spare, and Moonlight's budget.
+function VramBar({ node }) {
+  const v = node.vram;
+  const total = v?.total_gb || node.vram_gb;
+  if (!total) return <p className="faint xs">No GPU memory reported (CPU only).</p>;
+  const others = v?.others_gb ?? null;
+  const ml = v?.moonlight_gb ?? 0;
+  const free = v?.free_gb ?? null;
+  const budget = v?.budget_gb ?? node.vram_budget_gb ?? null;
+  const pct = (gb) => `${Math.max(0, Math.min(100, (gb / total) * 100))}%`;
+  const unified = others == null || free == null;
   return (
-    <div className={`pc ${node.online ? 'on' : 'off'}`}>
-      <House lit={node.online && !flagged} boarded={flagged} size={44} />
-      <div className="pc-main">
-        <h3 className="pc-name">{node.name}</h3>
-        <p className="pc-hw">
-          {osLabel(node.os)} · {node.cpu} · {node.ram_gb} GB RAM · {hardware(node)}
-        </p>
+    <div className="vbar">
+      <div className="vbar-head">
+        <span className="label">GPU memory</span>
+        <span className="num small">
+          {total.toFixed(0)} GB{unified ? ' unified' : ''}
+        </span>
       </div>
-      <dl className="pc-stats">
+      <div className="vbar-track" role="img" aria-label={`Your apps ${others ?? 'unknown'} GB, Moonlight ${ml} GB, free ${free ?? 'unknown'} GB of ${total} GB`}>
+        {others != null && <span className="vseg vseg-apps" style={{ width: pct(others) }} />}
+        <span className="vseg vseg-ml" style={{ width: pct(ml) }} />
+        {budget != null && <span className="vbudget" style={{ left: others != null ? pct(others) : 0, width: pct(budget) }} title={`Moonlight may use up to ${budget} GB`} />}
+      </div>
+      <dl className="vbar-legend">
         <div>
-          <dt>Status</dt>
-          <dd className={node.online ? 'online' : 'offline'}>{node.online ? 'Online' : `Offline · ${ago(node.last_seen, now)}`}</dd>
+          <dt>
+            <i className="dot dot-apps" />
+            Your apps
+          </dt>
+          <dd className="num">{others != null ? `${others.toFixed(1)} GB` : '—'}</dd>
         </div>
         <div>
-          <dt>Models live</dt>
-          <dd className="num">
-            {live} <span className="faint">of {models.length}</span>
-          </dd>
+          <dt>
+            <i className="dot dot-ml" />
+            Moonlight
+          </dt>
+          <dd className="num">{ml.toFixed(1)} GB</dd>
         </div>
         <div>
-          <dt>Earned</dt>
-          <dd className="num">
-            {usd(node.earnings?.total ?? 0)}
-            <small> · {usd(node.earnings?.today ?? 0)} today</small>
-          </dd>
+          <dt>
+            <i className="dot dot-free" />
+            Spare
+          </dt>
+          <dd className="num">{free != null ? `${free.toFixed(1)} GB` : '—'}</dd>
+        </div>
+        <div>
+          <dt>
+            <i className="dot dot-budget" />
+            Budget
+          </dt>
+          <dd className="num">{budget != null ? `${budget.toFixed(0)} GB` : 'None'}</dd>
         </div>
       </dl>
+      {unified && <p className="faint xs">Apple Silicon shares memory with the system, so other apps&apos; use isn&apos;t reported.</p>}
     </div>
   );
 }
 
-function JobsFeed({ me }) {
+function GpuCard({ node, now }) {
+  const models = node.models || [];
+  const live = models.filter((m) => m.policy === 'live').length;
+  const flagged = models.some((m) => badgeOf(m.verification) === 'flagged');
+  return (
+    <div className="gpu-card">
+      <div className="gpu-card-head">
+        <Machine online={node.online && !flagged} flagged={flagged} size={40} />
+        <div className="gpu-card-title">
+          <h3>{node.name}</h3>
+          <div className="specs-inline">
+            <span>{hardware(node)}</span>
+            <span>{node.cpu}</span>
+            <span>{node.ram_gb} GB RAM</span>
+            <span>{osLabel(node.os)}</span>
+          </div>
+        </div>
+        <span className={`status ${!node.online ? 'off' : node.paused ? 'paused' : 'on'}`} title={node.paused ? PAUSE[node.reason] : undefined}>
+          <i />
+          {!node.online ? `Offline · ${ago(node.last_seen, now)}` : node.paused ? PAUSE[node.reason] || 'Paused' : 'Online'}
+        </span>
+      </div>
+      <div className="gpu-card-stats">
+        <VramBar node={node} />
+        <dl>
+          <div>
+            <dt>Models live</dt>
+            <dd className="num">
+              {live}
+              <span className="faint">/{models.length}</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Earned</dt>
+            <dd className="num">{usd(node.earnings?.total ?? 0)}</dd>
+          </div>
+          <div>
+            <dt>Today</dt>
+            <dd className="num">{usd(node.earnings?.today ?? 0)}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+function JobsFeed({ me, nodes }) {
   const [live, setLive] = useState([]);
-  const nodes = useApi('/api/me/nodes').data?.nodes || [];
-  const names = Object.fromEntries(nodes.map((n) => [n.node_id, n.name]));
+  const names = Object.fromEntries((nodes || []).map((n) => [n.node_id, n.name]));
   useEvents((type, d) => {
     if (type === 'request' && d.seller_id === me.account.id) setLive((x) => [{ ...d, job_id: `live-${d.ts}-${Math.random()}`, fresh: true, earned_microusd: Math.round(d.cost_microusd * 0.9), input_tokens: null }, ...x].slice(0, 20));
   });
   const newest = me.jobs[0]?.ts ?? 0;
-  const rows = [...live.filter((j) => j.ts > newest), ...me.jobs].slice(0, 14);
+  const rows = [...live.filter((j) => j.ts > newest), ...me.jobs].slice(0, 12);
   return (
-    <section className="feed-block">
+    <section className="panel feed-block">
       <header className="block-head">
-        <h2 className="title-md">Jobs</h2>
+        <h2>Recent jobs</h2>
         <span className="livedot live">
           <i />
           Live
         </span>
       </header>
       {rows.length === 0 ? (
-        <p className="empty">No jobs yet. They show up here the moment your computer answers one.</p>
+        <p className="empty">No jobs yet. They appear here as soon as your GPU serves one.</p>
       ) : (
         <ol className="jobs">
           {rows.map((j) => (
             <li key={j.job_id} className={j.fresh ? 'fresh' : ''}>
               <time className="num">{clock(j.ts)}</time>
-              <span className="job-model">{j.model_id}</span>
+              <span className="job-model mono">{j.model_id}</span>
               <span className="job-node">{names[j.node_id] || j.node_name || ''}</span>
               <span className="job-tok num">{j.output_tokens ? `${int(j.output_tokens)} tok` : j.kind === 'decision' ? 'decision' : j.kind === 'embedding' ? 'embed' : ''}</span>
               <span className="job-ms num">{ms(j.latency_ms)}</span>
@@ -124,35 +199,37 @@ function JobsFeed({ me }) {
   );
 }
 
-function InspectionLog({ me }) {
+function VerificationLog({ me }) {
   const [live, setLive] = useState([]);
   useEvents((type, d) => {
     if (type === 'verification' && d.seller_id === me.account.id) setLive((x) => [{ ...d, fresh: true }, ...x].slice(0, 20));
   });
   const newest = me.verification_log[0]?.ts ?? 0;
-  const rows = [...live.filter((c) => c.ts > newest), ...me.verification_log].slice(0, 12);
+  const rows = [...live.filter((c) => c.ts > newest), ...me.verification_log].slice(0, 10);
   return (
-    <section className="feed-block">
+    <section className="panel feed-block">
       <header className="block-head">
-        <h2 className="title-md">Inspections</h2>
+        <h2>Verification</h2>
         <Link to="/trust" className="ghost">
           How checks work
         </Link>
       </header>
       {rows.length === 0 ? (
-        <p className="empty">Your first hidden checks arrive within minutes of going live.</p>
+        <p className="empty">The first hidden checks arrive within minutes of going live.</p>
       ) : (
-        <ol className="checks">
+        <ol className="vlog">
           {rows.map((c, i) => (
             <li key={`${c.ts}-${c.listing_id}-${i}`} className={`${c.passed ? 'pass' : 'fail'} ${c.fresh ? 'fresh' : ''}`}>
-              <span className="check-mark" aria-label={c.passed ? 'Passed' : 'Failed'}>
-                {c.passed ? '✓' : '✕'}
+              <span className="vlog-mark" aria-label={c.passed ? 'Passed' : 'Failed'}>
+                <Icon name={c.passed ? 'check' : 'flagged'} size={12} />
               </span>
-              <div>
-                <b>{c.model_id}</b> <span className="faint">· {METHOD_LABEL[c.method] || c.method}</span>
-                <p className="small muted">{METRIC[c.metric]?.(c.score, c.threshold) ?? ''}</p>
+              <div className="vlog-main">
+                <span className="mono">{c.model_id}</span>
+                <span className="faint xs">
+                  {METHOD_LABEL[c.method] || c.method} · {METRIC[c.metric]?.(c.score, c.threshold) ?? ''}
+                </span>
               </div>
-              <time className="num faint">{clock(c.ts)}</time>
+              <time className="num faint xs">{clock(c.ts)}</time>
               <Badge state={badgeOf(c.state_after || c.state, c.method)} size="sm" />
             </li>
           ))}
@@ -171,47 +248,54 @@ function Selling({ me }) {
   });
   const flagged = (nodes || []).flatMap((n) => n.models.filter((m) => badgeOf(m.verification) === 'flagged').map((m) => ({ ...m, node: n })));
   return (
-    <div className="selling">
+    <div className="dash">
       {flagged.map((f) => (
-        <div key={f.listing_id} className="flag-banner" role="alert">
-          <Stamp>Flagged</Stamp>
+        <div key={f.listing_id} className="alert" role="alert">
+          <Icon name="flagged" size={18} />
           <div>
-            <h3>
-              <code>{f.model_id}</code> on {f.node.name} failed inspection.
-            </h3>
+            <b>
+              <span className="mono">{f.model_id}</span> on {f.node.name} failed verification and is suspended.
+            </b>
             <p>
-              It failed {f.verification.failed} of its recent checks: its answers didn&apos;t match other machines running {f.model_id}. The listing is suspended and{' '}
-              <b>{usd(f.held_microusd)}</b> is held.
+              It failed {f.verification.failed ?? 'several'} recent checks: its answers didn&apos;t match other GPUs running this model.
+              {f.held_microusd ? (
+                <>
+                  {' '}
+                  <span className="num">{usd(f.held_microusd)}</span> is held until it passes again.
+                </>
+              ) : (
+                ' Its earnings are held until it passes again.'
+              )}
             </p>
           </div>
         </div>
       ))}
-      <EarningsMeter me={me} />
+      <EarningsKpis me={me} nodes={nodes} />
 
-      <section className="computers">
+      <section className="dash-section">
         <header className="block-head">
-          <h2 className="title-lg">My computers</h2>
-          <Link to="/add" className="btn btn-small btn-secondary">
-            + Add a computer
+          <h2>Your GPUs</h2>
+          <Link to="/add" className="btn btn-sm">
+            <Icon name="gpu" /> Add a GPU
           </Link>
         </header>
         {!nodes ? (
-          <div className="skeleton" style={{ height: 180 }} />
+          <div className="skeleton" style={{ height: 200 }} />
         ) : nodes.length === 0 ? (
-          <div className="empty-computers">
-            <House size={56} />
+          <div className="empty-state">
+            <Machine size={48} />
             <div>
-              <h3 className="title-md">No computers yet</h3>
-              <p className="muted">Install the agent, run it, approve the code. About a minute.</p>
+              <h3>No GPUs yet</h3>
+              <p className="muted small">Install the agent, run it, approve the code. It takes a few minutes.</p>
             </div>
             <Link to="/add" className="btn btn-primary">
-              Add a computer <Icon name="arrow" />
+              Add a GPU <Icon name="arrow" />
             </Link>
           </div>
         ) : (
           nodes.map((n) => (
-            <article key={n.node_id} className="computer">
-              <ComputerCard node={n} now={now} />
+            <article key={n.node_id} className="gpu-block">
+              <GpuCard node={n} now={now} />
               <ModelsReview node={n} models={n.models} headline="compact" />
             </article>
           ))
@@ -219,8 +303,8 @@ function Selling({ me }) {
       </section>
 
       <div className="feeds">
-        <JobsFeed me={me} />
-        <InspectionLog me={me} />
+        <JobsFeed me={me} nodes={nodes} />
+        <VerificationLog me={me} />
       </div>
     </div>
   );
@@ -230,47 +314,37 @@ function Buying({ me }) {
   const spentToday = me.requests.filter((r) => Date.now() - r.ts < 86_400_000).reduce((a, r) => a + r.cost_microusd, 0);
   const balance = useTween(me.balance_microusd, 600);
   return (
-    <div className="buying">
-      <section className="balance">
-        <div>
-          <span className="kicker">Balance</span>
-          <p className="balance-num num">{usd(Math.round(balance), 6)}</p>
-          <p className="faint small">Demo credit only. No real payments yet.</p>
-        </div>
-        <dl className="balance-side">
-          <div>
-            <dt>Spent today</dt>
-            <dd className="num">{usd(spentToday)}</dd>
-          </div>
-          <div>
-            <dt>Requests</dt>
-            <dd className="num">{int(me.requests.length)}</dd>
-          </div>
-          <div>
-            <dt>API keys</dt>
-            <dd>
-              {me.keys.length} · <Link to="/developers">Manage</Link>
-            </dd>
-          </div>
-        </dl>
-        <div className="balance-cta">
-          <Link to="/chat" className="btn btn-primary">
-            Open chat <Icon name="arrow" />
-          </Link>
-          <Link to="/developers" className="btn btn-secondary">
-            Get an API key
-          </Link>
-        </div>
-      </section>
+    <div className="dash">
+      <dl className="kpis">
+        <Kpi label="Balance" note="Demo credit. No real payments yet." tone="accent">
+          <span className="num kpi-big">{usd(Math.round(balance), 6)}</span>
+        </Kpi>
+        <Kpi label="Spent today">
+          <span className="num kpi-num">{usd(spentToday)}</span>
+        </Kpi>
+        <Kpi label="Requests" note="Last 50 shown below">
+          <span className="num kpi-num">{int(me.requests.length)}</span>
+        </Kpi>
+        <Kpi label="API keys" note={<Link to="/developers">Manage keys</Link>}>
+          <span className="num kpi-num">{me.keys.length}</span>
+        </Kpi>
+      </dl>
 
-      <section>
-        <header className="block-head">
-          <h2 className="title-lg">Usage</h2>
-          <span className="faint small">Who answered each request, and what it cost.</span>
+      <section className="panel dash-section">
+        <header className="block-head pad-x">
+          <h2>Usage</h2>
+          <div className="row">
+            <Link to="/chat" className="btn btn-sm">
+              <Icon name="chat" /> Open chat
+            </Link>
+            <Link to="/developers" className="btn btn-sm btn-primary">
+              Get an API key
+            </Link>
+          </div>
         </header>
         {me.requests.length === 0 ? (
           <p className="empty">
-            Nothing yet. <Link to="/chat">Send a message</Link> or call the API and each request appears here.
+            Nothing yet. <Link to="/chat">Send a message</Link> or call the API, and each request shows up here with the GPU that served it.
           </p>
         ) : (
           <div className="table-scroll">
@@ -279,7 +353,7 @@ function Buying({ me }) {
                 <tr>
                   <th>Time</th>
                   <th>Model</th>
-                  <th>Answered by</th>
+                  <th>Served by</th>
                   <th className="r">Tokens in / out</th>
                   <th className="r">Latency</th>
                   <th className="r">Cost</th>
@@ -290,13 +364,13 @@ function Buying({ me }) {
                   <tr key={r.request_id}>
                     <td className="num faint">{clock(r.ts)}</td>
                     <td>
-                      <Link to={modelPath(r.model_id)} className="plain">
+                      <Link to={modelPath(r.model_id)} className="plain mono">
                         {r.model_id}
                       </Link>
                     </td>
                     <td>
                       <span className="served">
-                        <House lit size={14} /> {r.node?.name} <span className="faint">· {r.seller?.name}</span>
+                        <Machine online size={22} /> {r.node?.name} <span className="faint">· {r.seller?.name}</span>
                       </span>{' '}
                       <Badge state={r.verification} size="sm" />
                     </td>
@@ -304,9 +378,7 @@ function Buying({ me }) {
                       {int(r.input_tokens)} / {r.kind === 'chat' ? int(r.output_tokens) : '—'}
                     </td>
                     <td className="r num">{ms(r.latency_ms)}</td>
-                    <td className="r num">
-                      <b>{usd(r.cost_microusd)}</b>
-                    </td>
+                    <td className="r num">{usd(r.cost_microusd)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -334,24 +406,27 @@ export default function Me({ tab }) {
   if (me === null) return null;
   return (
     <main className="wrap page me-page">
-      <header className="me-head">
+      <header className="dash-head">
         <div>
-          <p className="kicker">My Moonlight</p>
-          <h1 className="title-xl">{me.account.name}</h1>
+          <p className="eyebrow">Dashboard</p>
+          <h1 className="h2">{me.account.name}</h1>
           <p className="faint small">
-            {me.account.email} · <button className="link small" onClick={async () => (await signOut(), navigate('/'))}>Sign out</button>
+            {me.account.email} ·{' '}
+            <button className="link small" onClick={async () => (await signOut(), navigate('/'))}>
+              Sign out
+            </button>
           </p>
         </div>
+        <nav className="tabs" aria-label="Dashboard">
+          <Link to="/me/sell" aria-current={tab === 'sell' ? 'page' : undefined}>
+            Earnings
+          </Link>
+          <Link to="/me/buy" aria-current={tab === 'buy' ? 'page' : undefined} onClick={() => refreshMe()}>
+            Usage {counts.buy ? <span className="tab-count">{counts.buy}</span> : null}
+          </Link>
+          <Link to="/developers">API keys</Link>
+        </nav>
       </header>
-      <nav className="tabs me-tabs" aria-label="My Moonlight">
-        <Link to="/me/sell" aria-current={tab === 'sell' ? 'page' : undefined}>
-          Selling
-        </Link>
-        <Link to="/me/buy" aria-current={tab === 'buy' ? 'page' : undefined} onClick={() => refreshMe()}>
-          Buying {counts.buy ? <span className="tab-count">{counts.buy}</span> : null}
-        </Link>
-        <Link to="/developers">API keys</Link>
-      </nav>
       {tab === 'buy' ? <Buying me={me} /> : <Selling me={me} />}
     </main>
   );

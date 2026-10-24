@@ -3,7 +3,7 @@ import { listOf, useApi, useMe, usd, priceLabel, ms, AUTO_MODELS, ago } from '..
 import { Link, navigate } from '../router.jsx';
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
 import { loginPath } from './Login.jsx';
-import { House, VerifiedRivets } from '../components/ui.jsx';
+import { Machine, ShareBar } from '../components/ui.jsx';
 
 const STORE = 'ml-chats';
 const load = () => {
@@ -23,10 +23,10 @@ const save = (chats) => {
 const newChat = (model) => ({ id: Math.random().toString(36).slice(2, 10), title: '', model, messages: [], updated: Date.now() });
 
 const SUGGESTIONS = [
-  'Explain the putting-out system in three sentences',
-  'Write a haiku about a laptop that never sleeps',
-  'Draft a Python function that formats micro-dollars',
-  'What should I ask a model running on a stranger’s computer?',
+  'Explain embeddings to a new engineer in three sentences',
+  'Write a SQL query that finds duplicate emails',
+  'What does 4-bit quantization trade away?',
+  'Draft a short, friendly payment reminder',
 ];
 
 // Until the catalog arrives the picker is a placeholder, so the default model never flashes and changes.
@@ -65,7 +65,7 @@ function ModelPicker({ value, onChange, models }) {
     <div className="picker" ref={ref}>
       <button type="button" className="picker-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="picker-label">{auto ? auto.label : value}</span>
-        <span className="picker-sub">{auto ? auto.hint : current ? `${current.sellers_online} ${current.sellers_online === 1 ? 'computer' : 'computers'} online` : 'Not online'}</span>
+        <span className="picker-sub">{auto ? auto.hint : current ? `${current.sellers_online} ${current.sellers_online === 1 ? 'GPU' : 'GPUs'} online` : 'Not online'}</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
           <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
         </svg>
@@ -89,9 +89,9 @@ function ModelPicker({ value, onChange, models }) {
                   {m.thinking && <span className="tag">thinks</span>}
                 </span>
                 <span className="opt-meta num">
-                  <House lit={m.sellers_online > 0} size={12} /> {m.sellers_online} · from {price.amount} {price.unit} · {ms(m.p50_ms)}
+                  <Machine online={m.sellers_online > 0} size={12} /> {m.sellers_online} · from {price.amount} {price.unit} · {ms(m.p50_ms)}
                 </span>
-                <VerifiedRivets share={m.verified_share} total={m.sellers_online} />
+                <ShareBar share={m.verified_share} total={m.sellers_online} />
               </button>
             );
           })}
@@ -142,18 +142,17 @@ function ChatWindow({ chat, onUpdate, models, ready, me }) {
         <div className="chat-col">
           {messages.length === 0 ? (
             <div className="chat-empty">
-              <p className="kicker">Night shift</p>
-              <h1 className="chat-hello">What should tonight&apos;s shift work on?</h1>
+              <h1 className="chat-hello">What do you want to run?</h1>
               {models.length > 0 && !models.some((m) => m.sellers_online > 0) && (
                 <p className="notice">
-                  No computer is online right now. Messages wait in line for up to 30 seconds. <Link to="/add">Sell your computer</Link> to light the first lamp.
+                  No GPU is online right now, so messages can&apos;t be served yet. <Link to="/add">Add your GPU</Link> to be the first.
                 </p>
               )}
               <p className="muted">
                 {AUTO_MODELS.some((a) => a.id === model)
-                  ? 'Moonlight picks whichever verified computer is free.'
+                  ? 'Moonlight routes to whichever verified GPU is free.'
                   : current
-                    ? `${current.sellers_online} home ${current.sellers_online === 1 ? 'computer is' : 'computers are'} serving ${model} right now.`
+                    ? `${current.sellers_online} ${current.sellers_online === 1 ? 'GPU is' : 'GPUs are'} serving ${model} right now.`
                     : ''}
               </p>
               <div className="chips">
