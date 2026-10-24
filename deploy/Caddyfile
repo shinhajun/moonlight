@@ -9,6 +9,7 @@ moonlight.hajunshin.com {
 			header Content-Type application/javascript*
 			header Content-Type application/json*
 			header Content-Type image/svg+xml*
+			header Content-Type application/wasm*
 		}
 	}
 	reverse_proxy 127.0.0.1:8080 {
