@@ -182,3 +182,38 @@ test('errors: 401 without a key, 402 at zero balance, 404 unknown model, 503 no_
   assert.equal(broke.status, 402);
   assert.equal(broke.body.error.code, 'insufficient_balance');
 });
+
+test('a stream opens as soon as the job is dispatched and keeps alive until the first token', async (t) => {
+  const g = await startGateway({ waitingKeepaliveMs: 100, firstChunkTimeoutMs: 2000 });
+  t.after(g.close);
+  const node = await g.agent({ name: 'cold', models: [chatModel('qwen3.5:35b-a3b')], behavior: async (job, io) => { await sleep(450); io.chunk('Loaded.'); io.done({}); } });
+  const buyer = await g.buyer();
+  const t0 = Date.now();
+  const res = await fetch(`${g.base}/v1/chat/completions`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${buyer.secret}` },
+    body: JSON.stringify({ ...ask('qwen3.5:35b-a3b'), stream: true }),
+  });
+  const headersAfter = Date.now() - t0;
+  assert.ok(headersAfter < 300, `headers after ${headersAfter}ms`);
+  assert.equal(res.headers.get('x-moonlight-node'), node.nodeId);
+  const raw = await res.text();
+  const comments = raw.split('\n\n').filter((b) => b.startsWith(': waiting'));
+  assert.equal(comments[0], ': waiting model=qwen3.5:35b-a3b elapsed_s=0');
+  assert.ok(comments.length >= 3, raw);
+  assert.ok(raw.indexOf(': waiting') < raw.indexOf('"Loaded."'));
+  assert.equal(raw.slice(raw.indexOf('"Loaded."')).includes(': waiting'), false, 'keepalives stop at the first token');
+});
+
+test('the only seller loading a cold model is waited for, not cancelled and retried into a 503', async (t) => {
+  const g = await startGateway({ firstChunkTimeoutMs: 150 });
+  t.after(g.close);
+  const node = await g.agent({ name: 'only', models: [chatModel('gemma4:26b')], behavior: async (job, io) => { await sleep(600); io.chunk('Finally.'); io.done({}); } });
+  const buyer = await g.buyer();
+  const json = await g.chat(buyer.secret, ask('gemma4:26b'));
+  assert.equal(json.status, 200);
+  assert.equal(json.body.choices[0].message.content, 'Finally.');
+  const stream = await g.stream(buyer.secret, ask('gemma4:26b'));
+  assert.equal(stream.text, 'Finally.');
+  assert.equal(node.jobs.length, 2);
+  assert.equal(node.frames.filter((f) => f.t === 'cancel').length, 0);
+});

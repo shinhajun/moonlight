@@ -12,10 +12,18 @@ export class JobError extends Error {
 // One job on one node, consumed as an async iterator of {type:'chunk', data} then {type:'done', ...}.
 // Throws JobError on agent error, timeout, disconnect or cancel.
 class Job {
-  constructor(hub, conn, id, kind, config) {
-    Object.assign(this, { hub, conn, id, config, items: [], wake: null, ended: false, error: null });
-    this.timer = setTimeout(() => this.timeout('no first chunk'), kind === 'chat' ? config.firstChunkTimeoutMs : config.jobDeadlineMs);
+  // waitLonger(): when the first chunk is late, keep waiting (up to the deadline) instead of failing, e.g. because
+  // no other seller could take the job and the model is still loading.
+  constructor(hub, conn, id, kind, config, waitLonger) {
+    Object.assign(this, { hub, conn, id, config, waitLonger, items: [], wake: null, ended: false, error: null });
+    this.timer = kind === 'chat' ? setTimeout(() => this.late(), config.firstChunkTimeoutMs) : null;
     this.deadline = setTimeout(() => this.timeout('deadline'), config.jobDeadlineMs);
+  }
+
+  late() {
+    if (this.ended) return;
+    if (this.waitLonger?.()) this.timer = setTimeout(() => this.late(), this.config.firstChunkTimeoutMs);
+    else this.timeout('no first chunk');
   }
 
   notify() {
@@ -346,9 +354,9 @@ export function createHub(ctx) {
 
   const hasCapacity = (conn) => !conn.paused && !conn.draining && conn.inflight.size + conn.reserved < conn.maxConcurrency;
 
-  function run(conn, { kind, model_id, body }, { reserved = false } = {}) {
+  function run(conn, { kind, model_id, body }, { reserved = false, waitLonger = null } = {}) {
     if (reserved) conn.reserved--;
-    const job = new Job(api, conn, newId('job'), kind, config);
+    const job = new Job(api, conn, newId('job'), kind, config, waitLonger);
     conn.inflight.set(job.id, job);
     conn.send({ t: 'job', job_id: job.id, kind, model_id, body, deadline_ms: config.jobDeadlineMs });
     return job;

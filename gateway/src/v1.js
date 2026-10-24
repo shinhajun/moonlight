@@ -44,6 +44,9 @@ export async function chatCompletions(ctx, req, res, buyer) {
   const stream = body?.stream === true;
   const signal = abortOnClose(res);
   let open = false;
+  let waiting = null; // keepalive while the node loads the model / produces its first token
+  const stopWaiting = () => clearInterval(waiting);
+  res.on('close', stopWaiting);
   const openStream = (meta) => {
     if (open) return;
     open = true;
@@ -61,13 +64,25 @@ export async function chatCompletions(ctx, req, res, buyer) {
             res.write(`: queued position=${pos} eta_s=${queueEta(ctx, body.model, pos)}\n\n`);
           }
         : null,
+      onDispatch: stream
+        ? (meta) => {
+            openStream(meta);
+            stopWaiting();
+            const t0 = Date.now();
+            const tick = () => res.write(`: waiting model=${meta.model} elapsed_s=${Math.round((Date.now() - t0) / 1000)}\n\n`);
+            tick();
+            waiting = setInterval(tick, ctx.config.waitingKeepaliveMs);
+          }
+        : null,
       onChunk: stream
         ? (chunk, meta) => {
+            stopWaiting();
             openStream(meta);
             res.write(`data: ${JSON.stringify(chunk)}\n\n`);
           }
         : null,
     });
+    stopWaiting();
     if (!r) return;
     const usage = { prompt_tokens: r.usage.in, completion_tokens: r.usage.out, total_tokens: r.usage.in + r.usage.out };
     const moonlight = { ...moonlightOf(r), failovers: r.failovers, ...(r.error && { error: r.error }) };
@@ -86,6 +101,7 @@ export async function chatCompletions(ctx, req, res, buyer) {
       choices: [{ index: 0, message, finish_reason: r.finish_reason }], usage, moonlight,
     }, headersOf(r));
   } catch (err) {
+    stopWaiting();
     if (!open) throw err;
     // The stream is already open (queued keepalives or partial output): report the error in-band.
     res.write(`data: ${JSON.stringify(errorBody(err.status ? err : { message: 'Something went wrong on our side.', type: 'server_error', code: 'internal_error' }))}\n\n`);

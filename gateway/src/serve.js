@@ -172,8 +172,9 @@ function dedupe(sent) {
 const reasoningOf = (d) => (typeof d.reasoning === 'string' ? d.reasoning : typeof d.reasoning_content === 'string' ? d.reasoning_content : '');
 
 // onChunk(chunk, meta) streams OpenAI chunks as they arrive; the caller writes the final chunk from the result.
+// onDispatch(meta) fires each time the job goes to a node, before its first token (to open the stream early).
 // Returns null when the buyer went away.
-export async function serveChat(ctx, { buyer, body, pin = null, verification = false, signal = null, onChunk = null, onQueued = null }) {
+export async function serveChat(ctx, { buyer, body, pin = null, verification = false, signal = null, onChunk = null, onQueued = null, onDispatch = null }) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw errors.badRequest('Request body must be a JSON object.');
   const model = resolveModel(ctx, body.model, 'chat');
   validateMessages(body.messages);
@@ -229,7 +230,11 @@ export async function serveChat(ctx, { buyer, body, pin = null, verification = f
     const messages = out.content ? [...jobBody.messages, { role: 'assistant', content: out.content }] : jobBody.messages;
     const keep = { content: dedupe(out.content), reasoning: dedupe(out.reasoning) };
     out.finish = null;
-    job = ctx.hub.run(cand.conn, { kind: 'chat', model_id: served, body: { ...jobBody, model: served, messages } }, { reserved: true });
+    // A slow first token (a cold model load) only fails over when another seller could take the job.
+    const tried = new Set([...exclude, cand.conn]);
+    const waitLonger = () => !eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude: tried, capacity: false }).length;
+    job = ctx.hub.run(cand.conn, { kind: 'chat', model_id: served, body: { ...jobBody, model: served, messages } }, { reserved: true, waitLonger });
+    onDispatch?.({ request_id: r.id, seller_id: cand.listing.seller_id, node_id: cand.conn.id, model: served });
     const abort = () => job.cancel();
     signal?.addEventListener('abort', abort);
     try {
