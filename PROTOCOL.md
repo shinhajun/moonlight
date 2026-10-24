@@ -1,4 +1,4 @@
-# Moonlight protocol (v0.2)
+# Moonlight protocol (v0.3)
 
 Moonlight lets anyone sell the models running on their own computer. Buyers call one API. The gateway routes each call to a seller's machine, meters it, pays the seller, and checks that the seller really runs the model they listed.
 
@@ -224,3 +224,40 @@ Moonlight is a real product, not a scripted demo. Anyone can visit the site, reg
 - `GET /api/me/nodes` lists the nodes with their discovered models and each one's policy result: live, paused, needs_attestation, blocked:license, or blocked:policy.
 - `PATCH /api/me/listings/:id {price?, paused?, attest?}`.
 - `GET /install.sh`, `GET /install.ps1`, and `GET /dl/moonlight-<os>-<arch>[.exe]`.
+
+## Using models, availability, and queueing (v0.3)
+
+### How buyers use models
+- **One API key for every model.** The `ml_sk_` key belongs to the account, and the `model` field picks the model, as with OpenAI or OpenRouter.
+- **The site itself:** a full **Chat** page (ChatGPT-style, with a model picker and conversation history in localStorage), plus the decision and embedding playgrounds. Both bill the account's credits.
+- **Auto models**, for availability:
+  - `auto/chat-small` (≤ 9B)
+  - `auto/chat-large` (> 9B)
+  - `auto/embedding`
+  - `auto/decision`
+
+  Each routes to any live, verified (or else best-reputation) listing of that class. The response's `model` field and `moonlight.served_model` name the model actually used.
+
+### Capacity
+- `hello.node.max_concurrency` comes from the agent. Ollama defaults to 1 unless `OLLAMA_NUM_PARALLEL` is set. `--concurrency N` overrides it.
+- The gateway never exceeds a node's limit.
+
+### Queueing (when every seller of the model is busy or none is online)
+- **Per-model queue.** Jobs are served in fair order: round-robin across buyers, FIFO within a buyer.
+- **Waiting:** A request waits up to `moonlight.max_wait_s`, which defaults to 30 and caps at 120.
+  - Streaming requests receive SSE comment keepalives while queued (`: queued position=2 eta_s=8`). OpenAI SDKs ignore comment lines. The web Chat shows the queue position.
+  - A seller coming online for that model drains the queue immediately.
+- **On timeout:** 503 `{error:{code:"no_capacity"}, moonlight:{suggestions:[model_id…]}}` with `Retry-After`. The suggestions are other live models of the same kind and similar size, including the matching `auto/*` alias.
+- Queued time is never billed.
+
+### Sellers leaving
+- **Graceful shutdown** (Ctrl-C, `moonlight stop`, system sleep notice if detectable):
+  1. The agent sends `t:"drain"`.
+  2. The gateway routes no new jobs to that node.
+  3. In-flight jobs finish, for up to 30 s.
+  4. The agent then disconnects.
+- **Abrupt loss** (crash, lid closed, network drop): this falls back to the routing rules above.
+  - Before the first chunk, the job is retried on another seller.
+  - Mid-stream, it fails over with prefill and dedupe.
+  - The final chunk carries `moonlight.failovers:[{from_node, to_node, at_token}]`, and the web Chat shows a small "Switched to another computer" note.
+- **No other seller at all:** the job joins the queue under the same rules. If the stream had already started and the wait times out, the buyer gets the partial answer plus a final chunk with `finish_reason:"length"`, `moonlight.error:"seller_lost"`, and billing for delivered tokens only.
