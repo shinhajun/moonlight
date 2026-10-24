@@ -215,9 +215,17 @@ export function createApi(ctx) {
 
   // ---- nodes and listings ----
 
-  function modelRow(l) {
+  // Verification summary for one listing: state, badge, totals, the last 10 results (oldest first), last check time.
+  function verificationOf(l) {
     const c = hub.checkCounts(l.id);
-    const recent = db.all('SELECT passed FROM checks WHERE listing_id = ? ORDER BY id DESC LIMIT 10', l.id).map((x) => !!x.passed).reverse();
+    const last = db.all('SELECT passed, ts FROM checks WHERE listing_id = ? ORDER BY id DESC LIMIT 10', l.id);
+    return {
+      state: l.state, badge: badgeOf(ctx, l), passed: c.passed, failed: c.failed,
+      recent: last.map((x) => !!x.passed).reverse(), last_check: last[0]?.ts ?? null,
+    };
+  }
+
+  function modelRow(l) {
     const stats = db.get("SELECT COUNT(*) AS n, COALESCE(SUM(earned), 0) AS earned FROM requests WHERE listing_id = ? AND status != 'error'", l.id);
     const row = {
       listing_id: l.id, model_id: l.model_id, kind: l.kind, runtime: l.runtime, family: l.family, params_b: paramsB(l), quant: l.quant,
@@ -225,7 +233,7 @@ export function createApi(ctx) {
       policy: l.policy === 'live' && l.paused ? 'paused' : l.policy,
       price: l.price, market_price: marketPrice(l),
       verify_method: ctx.verifier.methodFor(l),
-      verification: { state: l.state, badge: badgeOf(ctx, l), passed: c.passed, failed: c.failed, recent },
+      verification: verificationOf(l),
       reputation: reputation(ctx, l), requests: stats.n, earned_microusd: stats.earned,
     };
     if (l.dims) row.dims = l.dims;
@@ -323,7 +331,8 @@ export function createApi(ctx) {
           listing_id: l.id, model_id: l.model_id, seller: { id: seller.id, name: seller.name, handle: seller.handle },
           node: { ...info, node_id: n.id, name: n.name, online: !!conn && !conn.paused, trusted: !!n.trusted },
           price: l.price, paused: l.paused, p50_ms: p50(ctx.latency.get(l.id) || []), reputation: reputation(ctx, l),
-          verification: { state: l.state, badge: badgeOf(ctx, l) }, verify_method: ctx.verifier.methodFor(l),
+          verification: verificationOf(l), verify_method: ctx.verifier.methodFor(l),
+          held_microusd: l.state === 'flagged' ? db.get("SELECT COALESCE(SUM(amount), 0) AS s FROM ledger WHERE listing_id = ? AND kind = 'earn'", l.id).s : 0,
         });
       }
     }

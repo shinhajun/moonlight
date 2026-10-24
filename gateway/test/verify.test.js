@@ -49,11 +49,38 @@ test('digest sets: registry manifest, Hugging Face LFS sha256, trusted-node dige
     models: [
       chatModel('llama3.2:3b', { digest: 'ee'.repeat(32), license: { id: 'Llama 3.2 Community License' } }),
       chatModel('qwen2.5:7b', { digest: 'dd'.repeat(32) }),
+      // A research license is reported as such even when the files are stale too.
+      chatModel('llama3.2:3b-research', { digest: 'ee'.repeat(32), license: { id: 'qwen-research' } }),
       chatModel('hf.co/bartowski/Some-GGUF:Q4_K_M', { digest: 'bb'.repeat(32) }),
       { model_id: 'laya-base', kind: 'decision', runtime: 'laya', digest: 'ff'.repeat(32), license: { id: 'apache-2.0' } },
     ],
   });
-  for (const l of b.welcome.listings) assert.deepEqual([l.status, l.reason], ['rejected', 'digest_mismatch'], l.model_id);
+  const research = b.welcome.listings.find((l) => l.model_id === 'llama3.2:3b-research');
+  assert.deepEqual([research.status, research.reason], ['rejected', 'blocked:license']);
+  for (const l of b.welcome.listings.filter((x) => x !== research)) assert.deepEqual([l.status, l.reason], ['rejected', 'digest_mismatch'], l.model_id);
+  const rows = (await g.get('/api/me/nodes', { key: b.token })).body.nodes[0].models;
+  const llama = rows.find((m) => m.model_id === 'llama3.2:3b');
+  assert.equal(llama.policy, 'blocked:digest');
+  assert.equal(llama.reason, 'Model files differ from the published version. Run `ollama pull llama3.2:3b` to update.');
+  assert.match(rows.find((m) => m.model_id.startsWith('hf.co/')).reason, /Hugging Face/);
+});
+
+test('a tag the trusted node pulled earlier accepts both its digest and a fresh registry pull', async (t) => {
+  // Ollama tags are mutable: the reference's qwen3.5 no longer matches the registry, and both are fine.
+  const fresh = '{"schemaVersion":2,"layers":["qwen3.5:35b-a3b@2026-10"]}';
+  const reg = http.createServer((req, res) => (req.url === '/v2/library/qwen3.5/manifests/35b-a3b' ? res.end(fresh) : ((res.statusCode = 404), res.end())));
+  await new Promise((r) => reg.listen(0, '127.0.0.1', r));
+  t.after(() => reg.close());
+  const g = await startGateway({ registryUrl: `http://127.0.0.1:${reg.address().port}` });
+  t.after(g.close);
+  const old = 'aa'.repeat(32);
+  const ref = await g.agent({ token: TRUSTED_TOKEN, name: 'ref', models: [chatModel('qwen3.5:35b-a3b', { digest: old })] });
+  assert.equal(ref.welcome.listings[0].status, 'live');
+  const sha = crypto.createHash('sha256').update(fresh).digest('hex');
+  for (const [name, digest, want] of [['fresh-pull', sha, 'live'], ['same-as-ref', old, 'live'], ['other', 'bb'.repeat(32), 'rejected']]) {
+    const a = await g.agent({ name, models: [chatModel('qwen3.5:35b-a3b', { digest })] });
+    assert.equal(a.welcome.listings[0].status, want, name);
+  }
 });
 
 test('listing policy: banned variants, licenses, attestation, private namespaces', async (t) => {
@@ -142,9 +169,13 @@ test('a --cheat-serve seller is flagged within a few checks, suspended, and its 
   const first = await g.post(`/api/admin/verify/${id}`, {}, { key: ADMIN });
   assert.equal(first.body.check.passed, false);
   assert.ok(first.body.check.score < 0.85);
+  const events = [];
+  g.ctx.bus.subscribe((type, data) => type === 'verification' && events.push(data));
   const second = await g.ctx.verifier.check(id);
   assert.equal(second.passed, false);
   assert.equal(second.state, 'flagged');
+  assert.deepEqual(Object.keys(events[0]), ['ts', 'listing_id', 'model_id', 'seller_id', 'seller_name', 'node_id', 'node_name', 'passed', 'state', 'method', 'score']);
+  assert.equal(events[0].node_name, 'cheat');
   assert.equal(g.listing(id).state, 'flagged');
 
   // Buyers now go to the reference node instead of the cheaper cheater.
@@ -154,6 +185,14 @@ test('a --cheat-serve seller is flagged within a few checks, suspended, and its 
   assert.equal(earnings.total, 0);
   assert.ok(earnings.held > 0);
   assert.equal(cheat.stats.verification.state, 'flagged');
+
+  const detail = await g.get('/api/models/qwen2.5:7b');
+  const row = detail.body.listings.find((l) => l.listing_id === id);
+  assert.deepEqual(Object.keys(row.verification), ['state', 'badge', 'passed', 'failed', 'recent', 'last_check']);
+  assert.deepEqual(row.verification.recent, [false, false]);
+  assert.ok(row.verification.last_check > 0);
+  assert.equal(row.held_microusd, earnings.held);
+  assert.equal(detail.body.listings.find((l) => l.listing_id !== id).held_microusd, 0);
 });
 
 // A small model of the same family: it guesses the big model's next word, then drifts. A one-word check
