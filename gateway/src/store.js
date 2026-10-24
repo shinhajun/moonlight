@@ -90,18 +90,27 @@ export function createStore(db, config) {
       const id = newId('key');
       db.run('INSERT INTO keys (id, account_id, kind, name, hash, prefix, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         id, accountId, kind, name, sha256(secret), prefixOf(secret), now());
-      return { key: db.get('SELECT id, name, prefix, created_at FROM keys WHERE id = ?', id), secret };
+      return { key: s.keyOf(accountId, id), secret };
     },
-    keysOf: (accountId) => db.all("SELECT id, name, prefix, created_at, last_used FROM keys WHERE account_id = ? AND kind = 'api' ORDER BY created_at", accountId),
-    deleteKey: (accountId, id) => db.run('DELETE FROM keys WHERE id = ? AND account_id = ?', id, accountId).changes > 0,
+    // API keys with their usage: requests made and micro-USD spent with each.
+    keysOf: (accountId, keyId = null) => db.all(
+      `SELECT k.id, k.name, k.prefix, k.created_at, k.last_used, COUNT(r.id) AS requests, COALESCE(SUM(r.cost), 0) AS spend_microusd
+       FROM keys k LEFT JOIN requests r ON r.key_id = k.id AND r.status != 'error'
+       WHERE k.account_id = ? AND k.kind = 'api' AND (? IS NULL OR k.id = ?) GROUP BY k.id ORDER BY k.created_at`,
+      accountId, keyId, keyId,
+    ).map((k) => ({ ...k })),
+    keyOf: (accountId, id) => s.keysOf(accountId, id)[0] || null,
+    countKeys: (accountId) => db.get("SELECT COUNT(*) AS n FROM keys WHERE account_id = ? AND kind = 'api'", accountId).n,
+    renameKey: (accountId, id, name) => db.run("UPDATE keys SET name = ? WHERE id = ? AND account_id = ? AND kind = 'api'", name, id, accountId).changes > 0,
+    deleteKey: (accountId, id) => db.run("DELETE FROM keys WHERE id = ? AND account_id = ? AND kind = 'api'", id, accountId).changes > 0,
 
-    // ml_sk_ API key or ml_st_ seller token → {account, kind}.
+    // ml_sk_ API key or ml_st_ seller token → {account, kind, keyId}.
     bySecret(secret) {
       if (typeof secret !== 'string' || !/^ml_(sk|st)_[0-9a-f]{32}$/.test(secret)) return null;
       const k = db.get('SELECT id, account_id, kind FROM keys WHERE hash = ?', sha256(secret));
       if (!k) return null;
       db.run('UPDATE keys SET last_used = ? WHERE id = ?', now(), k.id);
-      return { account: s.account(k.account_id), kind: k.kind };
+      return { account: s.account(k.account_id), kind: k.kind, keyId: k.id };
     },
     nodeByToken(token) {
       if (typeof token !== 'string' || !/^ml_nt_[0-9a-f]{32}$/.test(token)) return null;

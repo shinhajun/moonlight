@@ -64,7 +64,7 @@ function begin(ctx, { buyer, model, body, pin, verification, signal, onQueued })
   const { maxWaitS, maxWaitCapS } = ctx.config;
   const waitS = verification ? 60 : Math.min(maxWaitCapS, Math.max(0, Number.isFinite(m.max_wait_s) ? m.max_wait_s : maxWaitS));
   return {
-    id: newId('req'), buyer: account, model, pin, verification, signal, onQueued, maxWaitMs: waitS * 1000, queuedMs: 0,
+    id: newId('req'), buyer: account, keyId: buyer.keyId ?? null, model, pin, verification, signal, onQueued, maxWaitMs: waitS * 1000, queuedMs: 0,
     filters: {
       verified_only: m.verified_only === true,
       max_price_out_per_m: Number.isFinite(m.max_price_out_per_m) ? m.max_price_out_per_m : null,
@@ -154,10 +154,10 @@ function finish(ctx, r, { cand, jobId, status, usage, ttft = null, latency, atte
   const { share } = ctx.store.settle({ requestId: r.id, buyerId: r.buyer.id, sellerId: listing.seller_id, listingId: listing.id, nodeId: conn.id, cost });
   const badge = badgeOf(ctx, listing);
   ctx.db.run(
-    `INSERT INTO requests (id, ts, buyer_id, model_id, requested_model, kind, listing_id, seller_id, node_id, job_id, status, input_tokens,
+    `INSERT INTO requests (id, ts, buyer_id, key_id, model_id, requested_model, kind, listing_id, seller_id, node_id, job_id, status, input_tokens,
        output_tokens, cost, earned, ttft_ms, latency_ms, queue_ms, attempts, failovers, verification, badge, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    r.id, t, r.buyer.id, listing.model_id, r.model.id, listing.kind, listing.id, listing.seller_id, conn.id, jobId, status, usage.in,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    r.id, t, r.buyer.id, r.keyId, listing.model_id, r.model.id, listing.kind, listing.id, listing.seller_id, conn.id, jobId, status, usage.in,
     usage.out, cost, share, ttft, latency, r.queuedMs, attempts, failovers, r.verification ? 1 : 0, badge, error,
   );
   if (status === 'ok') {
@@ -180,9 +180,9 @@ function finish(ctx, r, { cand, jobId, status, usage, ttft = null, latency, atte
 
 function recordFailure(ctx, r, attempts, error) {
   ctx.db.run(
-    `INSERT INTO requests (id, ts, buyer_id, model_id, requested_model, kind, status, queue_ms, attempts, verification, error)
-     VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?, ?, ?)`,
-    r.id, now(), r.buyer.id, r.model.id, r.model.id, r.model.kind, r.queuedMs, attempts, r.verification ? 1 : 0, String(error).slice(0, 300),
+    `INSERT INTO requests (id, ts, buyer_id, key_id, model_id, requested_model, kind, status, queue_ms, attempts, verification, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'error', ?, ?, ?, ?)`,
+    r.id, now(), r.buyer.id, r.keyId, r.model.id, r.model.id, r.model.kind, r.queuedMs, attempts, r.verification ? 1 : 0, String(error).slice(0, 300),
   );
 }
 

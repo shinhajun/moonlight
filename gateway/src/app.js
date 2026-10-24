@@ -50,7 +50,7 @@ export function createGateway(config) {
     const found = ctx.store.bySecret(bearer(req));
     if (!found) throw errors.unauthorized();
     if (found.kind !== 'api') throw errors.unauthorized('Use an API key (ml_sk_…), not a seller token.');
-    return found.account;
+    return { ...found.account, keyId: found.keyId };
   }
   const v1 = (fn) => (req, res) => fn(ctx, req, res, buyer(req));
   const playground = (fn) => (req, res) => fn(ctx, req, res, api.need(req));
@@ -69,6 +69,7 @@ export function createGateway(config) {
     ['POST', '/api/accounts', api.seedAccount],
     ['GET', '/api/me', api.me],
     ['POST', '/api/me/keys', api.createKey],
+    ['PATCH', '/api/me/keys/:id', api.renameKey],
     ['DELETE', '/api/me/keys/:id', api.deleteKey],
     ['GET', '/api/me/nodes', api.myNodes],
     ['PATCH', '/api/me/listings/:id', api.patchListing],

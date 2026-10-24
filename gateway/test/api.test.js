@@ -38,7 +38,7 @@ test('API keys: create (secret shown once), use, list, delete', async (t) => {
   const k = await g.post('/api/me/keys', { name: 'laptop' }, { cookie: u.cookie });
   assert.equal(k.status, 201);
   assert.match(k.body.secret, /^ml_sk_[0-9a-f]{32}$/);
-  assert.deepEqual(Object.keys(k.body.key), ['id', 'name', 'prefix', 'created_at']);
+  assert.deepEqual(Object.keys(k.body.key), ['id', 'name', 'prefix', 'created_at', 'last_used', 'requests', 'spend_microusd']);
 
   await g.agent({ name: 'n', models: [chatModel('qwen2.5:7b')], behavior: say('hi') });
   const r = await g.chat(k.body.secret, { model: 'qwen2.5:7b', messages: [{ role: 'user', content: 'hi' }] });
@@ -206,4 +206,60 @@ test('static web app with SPA fallback, agent and release downloads', async (t) 
   assert.equal((await g.get('/dl/whatever')).status, 404);
   assert.equal((await g.get('/api/nope')).status, 404);
   assert.equal((await g.get('/v1/models')).headers['access-control-allow-origin'], '*');
+});
+
+test('API key lifecycle: names, per-key usage, rename, delete takes effect at once, ids never leak, 20-key cap', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  await g.agent({ name: 'n', maxConcurrency: 4, models: [chatModel('qwen2.5:1.5b', { params_b: 1.5 }), { model_id: 'nomic-embed-text', kind: 'embedding', runtime: 'ollama', digest: 'd', license: { id: 'Apache-2.0' } }],
+    behavior: (job, io) => (job.kind === 'embedding' ? io.result({ data: [{ index: 0, embedding: [0.1, 0.2] }] }) : say('hi')(job, io)) });
+  const u = await g.user();
+  const other = await g.user();
+  const mk = (name, who = u) => g.post('/api/me/keys', { name }, { cookie: who.cookie });
+  const chat = (key) => g.chat(key, { model: 'auto/chat-small', messages: [{ role: 'user', content: 'hi' }] });
+  const embed = (key) => g.post('/v1/embeddings', { model: 'nomic-embed-text', input: 'hello' }, { key });
+
+  const k1 = (await mk('  laptop  ')).body;
+  assert.equal(k1.key.name, 'laptop');
+  assert.deepEqual([k1.key.requests, k1.key.spend_microusd, k1.key.last_used], [0, 0, null]);
+  assert.equal((await chat(k1.secret)).status, 200);
+  assert.equal((await chat(k1.secret)).status, 200);
+  assert.equal((await embed(k1.secret)).status, 200);
+  const k2 = (await mk('server')).body;
+  assert.equal((await chat(k2.secret)).status, 200);
+
+  let keys = (await g.get('/api/me', { cookie: u.cookie })).body.keys;
+  const costs = g.ctx.db.all('SELECT key_id, SUM(cost) AS c, COUNT(*) AS n FROM requests GROUP BY key_id');
+  const byKey = Object.fromEntries(costs.map((r) => [r.key_id, r]));
+  assert.deepEqual(keys.map((k) => [k.name, k.requests, k.spend_microusd]), [
+    ['laptop', 3, byKey[k1.key.id].c],
+    ['server', 1, byKey[k2.key.id].c],
+  ]);
+  assert.ok(keys[0].last_used >= keys[0].created_at);
+
+  // Rename; other accounts get 404 for both rename and delete, exactly like a missing id.
+  const renamed = await g.req('PATCH', `/api/me/keys/${k1.key.id}`, { cookie: u.cookie, body: { name: 'old laptop' } });
+  assert.deepEqual([renamed.status, renamed.body.key.name, renamed.body.key.requests], [200, 'old laptop', 3]);
+  for (const [method, body] of [['PATCH', { name: 'mine now' }], ['DELETE', undefined]]) {
+    const theirs = await g.req(method, `/api/me/keys/${k1.key.id}`, { cookie: other.cookie, body });
+    const missing = await g.req(method, '/api/me/keys/key_000000000000', { cookie: other.cookie, body });
+    assert.deepEqual([theirs.status, theirs.body], [missing.status, missing.body]);
+    assert.equal(theirs.status, 404);
+  }
+
+  // Deleting a key cuts it off on the very next request; the other key keeps working.
+  assert.equal((await g.req('DELETE', `/api/me/keys/${k1.key.id}`, { cookie: u.cookie })).status, 204);
+  assert.equal((await chat(k1.secret)).status, 401);
+  assert.equal((await embed(k1.secret)).status, 401);
+  assert.equal((await chat(k2.secret)).status, 200);
+  assert.equal((await g.req('DELETE', `/api/me/keys/${k1.key.id}`, { cookie: u.cookie })).status, 404);
+  keys = (await g.get('/api/me', { cookie: u.cookie })).body.keys;
+  assert.deepEqual(keys.map((k) => k.name), ['server']);
+
+  // At most 20 keys per account.
+  for (let i = 0; i < 19; i++) assert.equal((await mk(`k${i}`)).status, 201);
+  const over = await mk('one too many');
+  assert.equal(over.status, 409);
+  assert.equal(over.body.error.code, 'too_many_keys');
+  assert.match(over.body.error.message, /up to 20 API keys/);
 });
