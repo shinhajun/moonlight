@@ -8,3 +8,8 @@ node_modules/
 dist/
 __pycache__/
 .venv/
+
+# demo video media, and Remotion's agent skills (reinstall: see video/README.md)
+video/out/
+video/.claude/skills/
+video/skills-lock.json
