@@ -2,7 +2,7 @@
 // mid-stream failover, metering, billing, the request record and live events.
 import { JobError } from './hub.js';
 import { clampUsage, estimateOutput, estimatePrompt, estimateTokens, priceCost } from './metering.js';
-import { autoAliasOf } from './policy.js';
+import { AUTO_MODELS, autoAliasOf } from './policy.js';
 import { badgeOf, eligible, rank } from './routing.js';
 import { ApiError, canonicalModel, errors, newId, now, pushRing } from './util.js';
 
@@ -73,16 +73,21 @@ function begin(ctx, { buyer, model, body, pin, verification, signal, onQueued })
   };
 }
 
-// Other live models a buyer could use instead: same kind, similar size, plus the matching auto/* alias.
+// Other live models a buyer could use instead: same kind, similar size, plus auto/* aliases of that kind that
+// have a seller online (the matching-size one first). An auto/* request leads with the other aliases.
 export function suggestions(ctx, model) {
-  const size = model.params_b ?? 7;
+  const size = model.params_b ?? (model.id === 'auto/chat-large' ? 35 : 7);
+  const online = (m) => ctx.catalog.summary(m).sellers_online > 0;
   const others = ctx.catalog.all()
-    .filter((m) => !m.auto && m.kind === model.kind && m.id !== model.id && m.public && ctx.catalog.summary(m).sellers_online > 0)
+    .filter((m) => !m.auto && m.kind === model.kind && m.id !== model.id && m.public && online(m))
     .sort((a, b) => Math.abs(Math.log((a.params_b ?? 7) / size)) - Math.abs(Math.log((b.params_b ?? 7) / size)))
     .slice(0, 3)
     .map((m) => m.id);
-  const alias = model.auto ? null : autoAliasOf({ kind: model.kind, params_b: size, model_id: model.id });
-  return alias && alias !== model.id ? [...others, alias] : others;
+  const match = autoAliasOf({ kind: model.kind, params_b: size, model_id: model.id });
+  const aliases = Object.keys(AUTO_MODELS)
+    .filter((id) => id !== model.id && AUTO_MODELS[id].kind === model.kind && online(ctx.catalog.get(id)))
+    .sort((a, b) => (b === match) - (a === match));
+  return model.auto ? [...aliases, ...others] : [...others, ...aliases];
 }
 
 function noCapacity(ctx, model) {

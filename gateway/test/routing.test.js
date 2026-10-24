@@ -217,3 +217,27 @@ test('the only seller loading a cold model is waited for, not cancelled and retr
   assert.equal(node.jobs.length, 2);
   assert.equal(node.frames.filter((f) => f.t === 'cancel').length, 0);
 });
+
+test('auto/chat-large with no large seller: 0 sellers in the catalog, and the 503 points to auto/chat-small', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  // A large model that was listed once, then its node went away (like the reference node freeing VRAM).
+  const big = await g.agent({ name: 'big', models: [chatModel('qwen3.5:35b-a3b', { params_b: 35 })] });
+  big.close();
+  await g.agent({ name: 'small', models: [chatModel('qwen2.5:7b', { params_b: 7.6 })], behavior: say('small') });
+  const buyer = await g.buyer();
+
+  const list = (await g.get('/v1/models')).body.data;
+  assert.deepEqual(list.find((m) => m.id === 'auto/chat-large').moonlight, { kind: 'chat', sellers_online: 0, price_from: null, verified: false });
+  assert.equal(list.find((m) => m.id === 'qwen3.5:35b-a3b').moonlight.sellers_online, 0);
+  const catalog = (await g.get('/api/models')).body.models.find((m) => m.id === 'auto/chat-large');
+  assert.equal(catalog.sellers_online, 0);
+
+  const auto = await g.chat(buyer.secret, ask('auto/chat-large'));
+  assert.equal(auto.status, 503);
+  assert.equal(auto.body.error.code, 'no_capacity');
+  assert.deepEqual(auto.body.moonlight.suggestions, ['auto/chat-small', 'qwen2.5:7b']);
+  // A specific large model never suggests the empty auto/chat-large.
+  const specific = await g.chat(buyer.secret, ask('qwen3.5:35b-a3b'));
+  assert.deepEqual(specific.body.moonlight.suggestions, ['qwen2.5:7b', 'auto/chat-small']);
+});
