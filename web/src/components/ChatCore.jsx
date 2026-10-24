@@ -1,7 +1,7 @@
 // Chat engine shared by the Chat page and model playgrounds: streaming, reasoning, queueing,
 // capacity errors, failover notes, and a receipt per answer naming the computer that served it.
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { api, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS } from '../api.js';
+import { api, serviceError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS } from '../api.js';
 import { Badge, House, Icon } from './ui.jsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -26,7 +26,7 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
   const abort = useRef(null);
   const latest = useRef(messages);
   latest.current = messages;
-  const busy = messages.some((m) => m.role === 'assistant' && ['queued', 'waiting', 'thinking', 'streaming'].includes(m.status));
+  const busy = messages.some((m) => m.role === 'assistant' && ['queued', 'waiting', 'dispatched', 'thinking', 'streaming'].includes(m.status));
 
   useEffect(() => {
     onChange?.(messages);
@@ -54,6 +54,9 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
         await streamChat('/api/playground/chat', body, {
           signal: ctrl.signal,
           onQueue: (q) => update(id, () => ({ status: 'queued', queue: q })),
+          // Dispatched to a computer but no token yet: it may be loading the model from disk.
+          onWaiting: (w) =>
+            update(id, (m) => (m.content || m.reasoning ? {} : { status: 'dispatched', warm: { model: w.model, since: m.warm?.since ?? Date.now() - w.elapsed_s * 1000 } })),
           onChunk: (c) => {
             if (c.error) {
               final = { error: c.error, moonlight: c.moonlight };
@@ -212,6 +215,42 @@ function Queue({ q }) {
   );
 }
 
+function Warming({ warm, model }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const s = Math.max(0, Math.round((now - warm.since) / 1000));
+  if (s < 3) {
+    return (
+      <div className="waiting" role="status">
+        <span className="dots" aria-hidden>
+          <i />
+          <i />
+          <i />
+        </span>
+        Sent to a home computer…
+      </div>
+    );
+  }
+  return (
+    <div className="warming" role="status">
+      <span className="kettle" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </span>
+      <div>
+        <b>
+          Warming up {warm.model && warm.model !== model ? warm.model : 'the model'}… <span className="num">{s} s</span>
+        </b>
+        <p>Home computers load a model when it’s first asked for. The next answers come quickly.</p>
+      </div>
+    </div>
+  );
+}
+
 function Reasoning({ text, active, ms: thinkMs }) {
   const [open, setOpen] = useState(false);
   if (!text) return null;
@@ -275,6 +314,7 @@ export function Message({ m, onRetry, onSuggest }) {
         </div>
       )}
       {m.status === 'queued' && m.queue && <Queue q={m.queue} />}
+      {m.status === 'dispatched' && m.warm && <Warming warm={m.warm} model={m.model} />}
       <Reasoning text={m.reasoning} active={m.status === 'thinking'} ms={m.meta?.think_ms} />
       {m.content && (
         <div className={streaming ? 'is-streaming' : ''}>
@@ -315,11 +355,7 @@ export function Message({ m, onRetry, onSuggest }) {
         <div className="notice warn">
           <Icon name="flagged" />
           <div>
-            {m.error?.status === 402
-              ? 'Your balance is too low for this request.'
-              : m.error?.status >= 500 || !m.error?.status
-                ? "Couldn't reach a computer just now."
-                : m.error?.message || 'Something went wrong.'}{' '}
+            {serviceError(m.error)}{' '}
             <button type="button" className="link" onClick={() => onRetry(m.id)}>
               Try again
             </button>

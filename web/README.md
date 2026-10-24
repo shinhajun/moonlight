@@ -11,6 +11,6 @@ node scripts/shots.mjs --base=http://localhost:5173    # light/dark × desktop/m
 ```
 
 - Mock login: `demo@moonlight.dev` / `moonlight` (a seller with two computers); `cheat@moonlight.dev` is the flagged seller.
-- Mock-only chat triggers: put `#queue`, `#failover` or `#lost` in a message.
+- Mock-only chat triggers: put `#queue`, `#warm`, `#failover` or `#lost` in a message.
 - `/add` shows a mock-only button that stands in for the `moonlight` CLI's pairing request.
 - Routes are paths (`/models/qwen3.5:35b-a3b`, `/me/sell`, `/pair/ABCD-1234`, `/chat`), so the gateway serves `index.html` for unknown GETs.

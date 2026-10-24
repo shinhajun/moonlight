@@ -300,7 +300,7 @@ export default function App() {
   const [Page, props] = route(path);
   const bare = path === '/chat';
   return (
-    <>
+    <div className="app">
       <a className="skip" href="#main">
         Skip to content
       </a>
@@ -310,6 +310,6 @@ export default function App() {
         <Page {...props} />
       </div>
       {!bare && <Footer />}
-    </>
+    </div>
   );
 }

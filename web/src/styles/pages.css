@@ -926,6 +926,73 @@ pre code,
     opacity: 0.4;
   }
 }
+.warming {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-self: start;
+  max-width: 520px;
+  padding: 12px 16px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 12px;
+  font-size: var(--text-sm);
+}
+.warming b .num {
+  color: var(--brass);
+}
+.warming p {
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+/* Steam rising while the model loads. */
+.kettle {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 26px;
+  margin-top: 2px;
+}
+.kettle::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: 9px;
+  border-radius: 3px 3px 5px 5px;
+  background: var(--lamp);
+}
+.kettle i {
+  position: absolute;
+  bottom: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--steam);
+  animation: puff-up 1.8s var(--ease-out) infinite;
+}
+.kettle i:nth-child(1) {
+  left: 3px;
+}
+.kettle i:nth-child(2) {
+  left: 9px;
+  animation-delay: 0.6s;
+}
+.kettle i:nth-child(3) {
+  left: 14px;
+  animation-delay: 1.2s;
+}
+@keyframes puff-up {
+  from {
+    transform: translateY(0) scale(0.6);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(-16px) scale(1.5);
+    opacity: 0;
+  }
+}
 .queue {
   display: inline-flex;
   align-items: center;

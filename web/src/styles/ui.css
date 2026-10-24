@@ -20,6 +20,16 @@
   left: 8px;
 }
 
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.app > #main {
+  flex: 1;
+}
+
 .page-enter {
   animation: page-in 0.5s var(--ease-out) both;
 }

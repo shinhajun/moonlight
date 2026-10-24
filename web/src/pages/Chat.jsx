@@ -95,7 +95,7 @@ function ChatWindow({ chat, onUpdate, models, me }) {
   const { messages, send, retry, stop, busy } = useChat({
     model,
     verifiedOnly,
-    messages: chat.messages.map((m) => (['waiting', 'queued', 'thinking', 'streaming'].includes(m.status) ? { ...m, status: m.content ? 'stopped' : 'cancelled' } : m)),
+    messages: chat.messages.map((m) => (['waiting', 'queued', 'dispatched', 'thinking', 'streaming'].includes(m.status) ? { ...m, status: m.content ? 'stopped' : 'cancelled' } : m)),
     onChange: (msgs) => onUpdate({ ...chat, model, messages: msgs, title: chat.title || msgs.find((x) => x.role === 'user')?.content.slice(0, 60) || '', updated: Date.now() }),
   });
   // A fresh chat on "any large model" falls back to small ones when no large model is online.

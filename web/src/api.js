@@ -58,6 +58,13 @@ async function errorFrom(res) {
   return new ApiError(res.status, e?.message || `Request failed (${res.status})`, e?.code, body, retry > 0 ? retry : null);
 }
 
+// Server or network failures read as one plain sentence; client errors keep the server's words.
+export function serviceError(err) {
+  if (err?.status === 402) return 'Your balance is too low for this request.';
+  if (!err?.status || err.status >= 500) return "Couldn't reach a computer just now. Try again in a moment.";
+  return err.message;
+}
+
 // Rate limits (429) say what was limited and when to come back; other errors keep the server's words.
 export function friendly(err, action) {
   if (err?.status !== 429) return err?.message || 'Something went wrong. Try again.';
@@ -171,9 +178,10 @@ export function useEventStatus() {
 
 // ---------------------------------------------------------------- streaming chat
 
-// POSTs an OpenAI chat body with stream:true. Calls onChunk per parsed chunk, and onQueue for the
-// gateway's `: queued position=2 eta_s=8` keepalive comments.
-export async function streamChat(path, body, { onChunk, onQueue, signal }) {
+// POSTs an OpenAI chat body with stream:true. Calls onChunk per parsed chunk, and the gateway's
+// keepalive comments: onQueue for `: queued position=2 eta_s=8`, onWaiting for
+// `: waiting model=<id> elapsed_s=N` (dispatched, no token yet).
+export async function streamChat(path, body, { onChunk, onQueue, onWaiting, signal }) {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -196,6 +204,8 @@ export async function streamChat(path, body, { onChunk, onQueue, signal }) {
       for (const line of frame.split('\n')) {
         const q = /^:\s*queued\s+position=(\d+)(?:\s+eta_s=(\d+))?/.exec(line);
         if (q) onQueue?.({ position: Number(q[1]), eta_s: q[2] == null ? null : Number(q[2]) });
+        const wt = /^:\s*waiting\s+model=(\S+)\s+elapsed_s=(\d+)/.exec(line);
+        if (wt) onWaiting?.({ model: wt[1], elapsed_s: Number(wt[2]) });
         if (!line.startsWith('data:')) continue;
         const data = line.slice(5).trim();
         if (data === '[DONE]') return meta;

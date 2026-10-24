@@ -1,5 +1,5 @@
 // Vite dev-server plugin that answers /api/*, /v1/* and SSE /api/events like the gateway (PROTOCOL.md v0.3).
-// Mock-only chat triggers, for demos and screenshots: put #queue, #failover or #lost in a message.
+// Mock-only chat triggers, for demos and screenshots: put #queue, #warm, #failover or #lost in a message.
 import * as w from './world.js';
 import { chatAnswer, embed, reasoningFor, systemoneAnswer, tokens } from './answers.js';
 
@@ -65,7 +65,7 @@ async function chat(req, res) {
   const body = await readJson(req);
   if (!body) return fail(res, 400, 'bad_json', 'Body is not valid JSON.');
   const lastUser = [...(body.messages || [])].reverse().find((m) => m.role === 'user')?.content || '';
-  const trigger = /#(queue|failover|lost)\b/.exec(String(lastUser))?.[1];
+  const trigger = /#(queue|failover|lost|warm)\b/.exec(String(lastUser))?.[1];
   await sleep(120);
   let l = pickListing(res, body, buyer, 'chat');
   if (!l) return;
@@ -105,6 +105,14 @@ async function chat(req, res) {
     }
   }
   const first = Math.round(node.ttft * (0.8 + Math.random() * 0.5));
+  res.write(`: waiting model=${l.model_id} elapsed_s=0\n\n`);
+  if (trigger === 'warm') {
+    for (const s of [5, 10]) {
+      await sleep(5000);
+      res.write(`: waiting model=${l.model_id} elapsed_s=${s}\n\n`);
+    }
+    await sleep(2000);
+  }
   await sleep(first);
   node.inflight++;
   chunk({ role: 'assistant', content: '' });
