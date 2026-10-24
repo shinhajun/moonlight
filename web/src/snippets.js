@@ -12,7 +12,7 @@ client = OpenAI(
 )
 
 reply = client.chat.completions.create(
-    model="${model}",  # or "auto/chat-large" for any free large model
+    model="${model}",  ${model === 'auto/chat-large' ? '# or "auto/chat-small" for the best free small model' : '# or "auto/chat-large" for the best free large model'}
     messages=[{"role": "user", "content": "Hello from Moonlight"}],${verified ? '\n    extra_body={"moonlight": {"verified_only": True}},' : ''}
 )
 print(reply.choices[0].message.content)`;
@@ -45,7 +45,7 @@ import os
 client = OpenAI(base_url="${BASE}", api_key=os.environ["MOONLIGHT_API_KEY"])
 
 res = client.embeddings.create(
-    model="${model}",  # or "auto/embedding"
+    model="${model}",${model === 'auto/embedding' ? '' : '  # or "auto/embedding"'}
     input=["The mill never sleeps", "Neither does my laptop"],
 )
 print(len(res.data[0].embedding))`;
