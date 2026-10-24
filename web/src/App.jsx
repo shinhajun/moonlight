@@ -6,14 +6,14 @@ import Landing from './pages/Landing.jsx';
 import Models from './pages/Models.jsx';
 import ModelDetail from './pages/ModelDetail.jsx';
 import Chat from './pages/Chat.jsx';
-import Developers from './pages/Developers.jsx';
+import Docs from './pages/Docs.jsx';
 import Me from './pages/Me.jsx';
 import AddComputer from './pages/AddComputer.jsx';
 import Pair from './pages/Pair.jsx';
 import Login, { loginPath } from './pages/Login.jsx';
 import Trust from './pages/Trust.jsx';
 
-const REDIRECTS = { '/me': '/me/sell', '/sell': '/me/sell', '/buy': '/me/buy', '/signup': '/login?mode=signup', '/keys': '/developers' };
+const REDIRECTS = { '/me': '/me/sell', '/sell': '/me/sell', '/buy': '/me/buy', '/signup': '/login?mode=signup', '/keys': '/docs', '/developers': '/docs' };
 
 const Blank = () => null;
 
@@ -23,7 +23,7 @@ function route(path) {
   if (path === '/chat') return [Chat];
   if (path === '/models' || path === '/models/') return [Models];
   if (path.startsWith('/models/')) return [ModelDetail, { id: decodeURIComponent(path.slice(8)) }];
-  if (path === '/developers') return [Developers];
+  if (path === '/docs') return [Docs];
   if (path === '/me/sell' || path === '/me/buy') return [Me, { tab: path.slice(4) }];
   if (path === '/add') return [AddComputer];
   if (path.startsWith('/pair/')) return [Pair, { code: decodeURIComponent(path.slice(6)).toUpperCase() }];
@@ -118,7 +118,7 @@ function AccountMenu({ me, path }) {
           <Link to="/me/buy" role="menuitem">
             Usage &amp; balance
           </Link>
-          <Link to="/developers" role="menuitem">
+          <Link to="/docs" role="menuitem">
             API keys
           </Link>
           <button type="button" role="menuitem" onClick={leave}>
@@ -133,7 +133,7 @@ function AccountMenu({ me, path }) {
 const LINKS = [
   ['/chat', 'Chat'],
   ['/models', 'Models'],
-  ['/developers', 'Developers'],
+  ['/docs', 'API'],
   ['/trust', 'Trust'],
 ];
 
@@ -201,7 +201,7 @@ function Masthead({ path }) {
                   </div>
                 </div>
                 <Link to="/me/sell">My Moonlight</Link>
-                <Link to="/developers">API keys</Link>
+                <Link to="/docs">API keys</Link>
                 <button type="button" className="link" onClick={leave}>
                   Sign out
                 </button>
@@ -250,7 +250,7 @@ function Footer() {
             <h4>Use</h4>
             <Link to="/chat">Chat</Link>
             <Link to="/models">Models &amp; pricing</Link>
-            <Link to="/developers">API</Link>
+            <Link to="/docs">API</Link>
           </div>
           <div>
             <h4>Earn</h4>
