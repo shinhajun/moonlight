@@ -105,3 +105,33 @@ test('a draining node gets no new jobs while its in-flight job finishes', async 
   assert.equal((await inflight).body.choices[0].message.content, 'done long one');
   assert.equal(b.jobs.length, 1);
 });
+
+test('no seller connected: 503 no_sellers at once; a seller that just left still gets the queue', async (t) => {
+  const g = await startGateway({ offlineGraceMs: 300 });
+  t.after(g.close);
+  const gone = await g.agent({ name: 'gone', models: [chatModel('qwen3.5:35b-a3b', { params_b: 35 })] });
+  await g.agent({ name: 'small', models: [chatModel('qwen2.5:7b', { params_b: 7 })], behavior: say('small') });
+  const buyer = await g.buyer();
+  gone.close();
+  await waitFor(() => g.ctx.hub.conns.size === 1);
+
+  // Within the grace period: it may reconnect, so the request waits its max_wait.
+  let t0 = Date.now();
+  const recent = await g.chat(buyer.secret, ask('x', { model: 'qwen3.5:35b-a3b', moonlight: { max_wait_s: 0.2 } }));
+  assert.ok(Date.now() - t0 >= 180);
+  assert.deepEqual([recent.status, recent.body.moonlight.reason], [503, 'busy']);
+
+  await sleep(350);
+  t0 = Date.now();
+  const none = await g.chat(buyer.secret, ask('x', { model: 'qwen3.5:35b-a3b', moonlight: { max_wait_s: 30 } }));
+  assert.ok(Date.now() - t0 < 200, 'fails fast');
+  assert.equal(none.status, 503);
+  assert.equal(none.body.error.code, 'no_capacity');
+  assert.equal(none.body.moonlight.reason, 'no_sellers');
+  assert.deepEqual(none.body.moonlight.suggestions, ['qwen2.5:7b', 'auto/chat-small']);
+  assert.equal(none.headers['retry-after'], '10');
+
+  // Same for an auto/* class with nobody in it, and for filters no connected seller can meet.
+  assert.equal((await g.chat(buyer.secret, ask('x', { model: 'auto/chat-large' }))).body.moonlight.reason, 'no_sellers');
+  assert.equal((await g.chat(buyer.secret, ask('x', { moonlight: { verified_only: true, max_wait_s: 30 } }))).body.moonlight.reason, 'no_sellers');
+});
