@@ -104,6 +104,13 @@ export function licensePolicy(l, { attested, trusted }) {
   return { policy: 'live', reason: null };
 }
 
+// What a seller should do when their files don't match the published model.
+function digestAdvice(modelId, runtime) {
+  if (modelId.startsWith('hf.co/')) return 'Model files differ from the published GGUF on Hugging Face. Download it again.';
+  if (runtime === 'ollama') return `Model files differ from the published version. Run \`ollama pull ${modelId}\` to update.`;
+  return 'Model files differ from the published weights. Download them again.';
+}
+
 export function createHub(ctx) {
   const { config, db, store, bus } = ctx;
   const conns = new Map(); // node_id -> conn (online only)
@@ -152,10 +159,14 @@ export function createHub(ctx) {
     if (isPrivate) {
       const parts = model_id.split('/');
       if (parts.length !== 2 || parts[0] !== seller.handle || !parts[1]) return block('namespace');
-    } else if (conn.trusted && digest) {
+    }
+    // A blocked license wins over a digest mismatch: pulling again wouldn't make it listable.
+    if (licenseClass({ id: l.license_id }) === 'blocked') return Object.assign(l, { policy: 'blocked:license', reason: l.license_id });
+    // Private weights have no published digest to compare with.
+    if (!isPrivate && conn.trusted && digest) {
       db.run('INSERT OR IGNORE INTO refs (model_id, digest, node_id, set_at) VALUES (?, ?, ?, ?)', model_id, digest, conn.id, now());
-    } else if (accepted.size && (digest || runtime === 'ollama') && !accepted.has(digest)) {
-      return block('digest_mismatch');
+    } else if (!isPrivate && accepted.size && (digest || runtime === 'ollama') && !accepted.has(digest)) {
+      return Object.assign(l, { policy: 'blocked:digest', reason: digestAdvice(model_id, runtime) });
     }
     const existing = db.get('SELECT attested FROM listings WHERE seller_id = ? AND model_id = ?', seller.id, l.model_id);
     return Object.assign(l, licensePolicy(l, { attested: !!existing?.attested, trusted: conn.trusted }));
@@ -190,7 +201,9 @@ export function createHub(ctx) {
 
   function welcomeEntry(l) {
     const e = { listing_id: l.id, model_id: l.model_id, status: l.policy === 'live' ? 'live' : 'rejected' };
-    if (l.policy !== 'live') e.reason = l.policy === 'blocked:policy' && l.reason ? l.reason : l.policy;
+    // The agent gets stable codes; the web shows the listing's human reason.
+    if (l.policy === 'blocked:digest') e.reason = 'digest_mismatch';
+    else if (l.policy !== 'live') e.reason = l.policy === 'blocked:policy' && l.reason ? l.reason : l.policy;
     if (l.paused) e.paused = true;
     return e;
   }

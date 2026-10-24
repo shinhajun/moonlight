@@ -99,7 +99,7 @@ test('device pairing: code → approve in the browser → node token → the age
   }
   assert.equal(m.policy, 'live');
   assert.deepEqual(m.price, m.market_price); // no price from the agent: the suggested one
-  assert.deepEqual(Object.keys(m.verification), ['state', 'badge', 'passed', 'failed', 'recent']);
+  assert.deepEqual(Object.keys(m.verification), ['state', 'badge', 'passed', 'failed', 'recent', 'last_check']);
 
   // Seller edits: price and pause; a web price survives the agent reconnecting.
   const patched = await g.req('PATCH', `/api/me/listings/${m.listing_id}`, { cookie: u.cookie, body: { price: { out_per_m: 123_000 }, paused: true } });

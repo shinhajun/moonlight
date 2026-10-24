@@ -243,8 +243,8 @@ export function createVerifier(ctx) {
     if (state !== listing.state) store.updateListing(listing.id, { state });
     log(`check ${listing.id} ${listing.model_id} ${res.method} ${res.metric}=${Number(res.score).toFixed(3)} ${res.passed ? 'pass' : 'FAIL'} → ${state}`);
     bus.publish('verification', {
-      ts: t, listing_id: listing.id, model_id: listing.model_id, seller_id: listing.seller_id, node_id: conn.id,
-      passed: res.passed, state, method: res.method, score: res.score,
+      ts: t, listing_id: listing.id, model_id: listing.model_id, seller_id: listing.seller_id, seller_name: conn.seller.name,
+      node_id: conn.id, node_name: conn.info.name, passed: res.passed, state, method: res.method, score: res.score,
     });
     for (const c of hub.conns.values()) if (c.sellerId === listing.seller_id) hub.pushStats(c);
     if (state !== listing.state) hub.capacityChanged();
