@@ -5,7 +5,8 @@ import { chatAnswer, embed, reasoningFor, systemoneAnswer, tokens } from './answ
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const AUTO = {
-  'auto/chat-small': (m) => m.kind === 'chat' && (m.params_b ?? 99) <= 9,
+  // 1B–9B: models under 1B are never picked by an alias, only by name.
+  'auto/chat-small': (m) => m.kind === 'chat' && (m.params_b ?? 99) <= 9 && (m.params_b ?? 1) >= 1,
   'auto/chat-large': (m) => m.kind === 'chat' && (m.params_b ?? 0) > 9,
   'auto/embedding': (m) => m.kind === 'embedding',
   'auto/decision': (m) => m.kind === 'decision' && !m.private,
@@ -40,7 +41,9 @@ function pickListing(res, body, buyer, kind) {
   if (AUTO[body.model]) {
     const ids = w.catalog().filter(AUTO[body.model]).map((m) => m.id);
     const ls = ids.map((id) => w.route(id, filters)).filter(Boolean);
-    const best = ls.sort((a, b) => (b.verification.state === 'verified') - (a.verification.state === 'verified') || b.reputation - a.reputation)[0];
+    // Quality first: verified, then the largest model, then reputation.
+    const size = (l) => w.metaOf(l.model_id)?.params_b ?? 0;
+    const best = ls.sort((a, b) => (b.verification.state === 'verified') - (a.verification.state === 'verified') || size(b) - size(a) || b.reputation - a.reputation)[0];
     if (best) return best;
     fail(res, 503, 'no_capacity', `No computer is serving ${body.model} right now.`, { moonlight: { reason: 'no_sellers', suggestions: [] } }, { 'retry-after': '10' });
     return null;

@@ -254,7 +254,7 @@ function Keys({ me }) {
 export default function Docs() {
   const { me, error } = useMe();
   const [kind, setKind] = useState('chat');
-  const example = { chat: 'auto/chat-large', embedding: 'auto/embedding', decision: 'auto/decision' }[kind];
+  const example = { chat: 'auto/chat-small', embedding: 'auto/embedding', decision: 'auto/decision' }[kind];
   return (
     <main className="wrap page dev-page">
       <header className="page-head dev-head">

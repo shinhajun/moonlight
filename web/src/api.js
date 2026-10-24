@@ -264,8 +264,8 @@ export const KINDS = { chat: 'Chat', embedding: 'Embedding', decision: 'Decision
 
 // Auto models route to any live, verified listing of a class (PROTOCOL v0.3).
 export const AUTO_MODELS = [
-  { id: 'auto/chat-small', kind: 'chat', label: 'Any small model', hint: 'Fastest available · 9B or smaller' },
-  { id: 'auto/chat-large', kind: 'chat', label: 'Any large model', hint: 'Best available · over 9B' },
+  { id: 'auto/chat-small', kind: 'chat', label: 'Any small model', hint: 'Best available small model · 1B–9B' },
+  { id: 'auto/chat-large', kind: 'chat', label: 'Any large model', hint: 'Best available large model · over 9B' },
   { id: 'auto/embedding', kind: 'embedding', label: 'Any embedding model', hint: 'Cheapest verified' },
   { id: 'auto/decision', kind: 'decision', label: 'Any decision model', hint: 'Laya or compatible' },
 ];
