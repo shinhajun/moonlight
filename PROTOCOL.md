@@ -240,7 +240,7 @@ Moonlight is a real product, not a scripted demo. Anyone can visit the site, reg
 - **One API key for every model.** The `ml_sk_` key belongs to the account, and the `model` field picks the model, as with OpenAI or OpenRouter.
 - **The site itself:** a full **Chat** page (ChatGPT-style, with a model picker and conversation history in localStorage), plus the decision and embedding playgrounds. Both bill the account's credits.
 - **Auto models**, for availability:
-  - `auto/chat-small` (≤ 9B)
+  - `auto/chat-small` (1B–9B; models under 1B are never chosen by an auto alias, but can still be requested by name)
   - `auto/chat-large` (> 9B)
   - `auto/embedding`
   - `auto/decision`
