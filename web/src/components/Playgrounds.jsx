@@ -1,6 +1,6 @@
 // Decision (systemone) and embedding playgrounds. Both bill the signed-in account.
 import { useEffect, useRef, useState } from 'react';
-import { api, usd, ms, hardware, refreshMe } from '../api.js';
+import { api, serviceError, usd, ms, hardware, refreshMe } from '../api.js';
 import { resolveNode } from './ChatCore.jsx';
 import { Badge, House } from './ui.jsx';
 
@@ -180,7 +180,7 @@ export function DecisionPlayground({ model, filters }) {
       <button className="btn btn-primary" disabled={busy || !qs.length}>
         {busy ? 'Deciding…' : 'Decide'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : error.message}</p>}
+      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : serviceError(error)}</p>}
       {res && (
         <div className="answers" key={res.meta.total_ms}>
           {Object.entries(res.data.answers).map(([n, a]) => (
@@ -279,7 +279,7 @@ export function EmbeddingPlayground({ model }) {
       <button className="btn btn-primary" disabled={busy || !a.trim()}>
         {busy ? 'Embedding…' : 'Embed'}
       </button>
-      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : error.message}</p>}
+      {error && <p className="form-error">{error.code === 'no_capacity' ? `No computer is serving ${model} right now.` : serviceError(error)}</p>}
       {v && (
         <div className="embed-out">
           <div className="embed-facts">
