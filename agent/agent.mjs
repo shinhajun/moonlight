@@ -859,6 +859,45 @@ function printModelTable(models, runtimes) {
   process.stdout.write('\n');
 }
 
+// One screen after pairing: what this computer will offer and how Moonlight treats it.
+async function firstRunSummary(base) {
+  const total = st.runtimes.reduce((sum, r) => sum + r.count, 0);
+  const g = gpu.sample;
+  const out = [];
+  const line = (label, value) => out.push(`  ${dim(label.padEnd(11))}${value}`);
+  out.push(`  ${accent(bold('☾ moonlight'))}  ${bold(st.node.name)} is ready to sell\n`);
+  line('Models', `found ${bold(total)} · listing ${bold(st.models.length)}`
+    + (st.overBudget.length ? ` · ${st.overBudget.length} over your VRAM budget` : '')
+    + (ctx.only ? dim(' (--models)') : ''));
+  line('GPU', g?.total_gb ? `${g.total_gb} GB${g.free_gb != null ? ` · ${g.free_gb} GB free now` : ''}${g.source === 'apple' ? ' (shared with the system)' : ''}`
+    : dim('not monitored on this computer'));
+  line('Budget', ctx.budget != null ? `Moonlight uses at most ${bold(`${ctx.budget} GB`)} of GPU memory` : 'no limit: Moonlight may use any spare GPU memory (set one with --vram-budget)');
+  line('Yielding', ctx.yieldToOwner ? `${green('on')}: pauses whenever your own apps need the GPU, resumes after ${YIELD_QUIET_MS / 1000} s of quiet`
+    : `${yellow('off')} (--no-yield): keeps serving even when the GPU is busy`);
+  if (ctx.keepWarm.length) line('Keep warm', ctx.keepWarm.join(', '));
+  line('Prices', st.models.some((m) => m.price) ? 'your --price flags' : `market price for each model's size; change them at ${cyan(`${base}/me/sell`)}`);
+  line('Stop', `press q or Ctrl-C (finishes jobs first), or run ${bold('moonlight stop')}`);
+  process.stdout.write(out.join('\n') + '\n\n');
+  if (!ui.tty || !process.stdin.isTTY) return;
+  // Leave it on screen for a moment before the dashboard takes over the terminal.
+  process.stdout.write(dim('  Press any key to open the dashboard…'));
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  await new Promise((resolve) => {
+    const done = (key) => {
+      clearTimeout(timer);
+      process.stdin.off('data', done);
+      if (String(key) === '\u0003') die('stopped', 130);
+      resolve();
+    };
+    const timer = setTimeout(done, 8000);
+    process.stdin.on('data', done);
+  });
+  process.stdin.setRawMode(false);
+  process.stdin.pause();
+  process.stdout.write('\n');
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pairing (device flow): show a code, the seller approves it in the browser, we get a node token
 // ---------------------------------------------------------------------------------------------
@@ -1620,6 +1659,7 @@ async function runAgent(opts) {
     ctx.token = r.node_token;
     ctx.tokenSource = 'config';
     if (r.node_id) st.nodeId = r.node_id;
+    await firstRunSummary(base);
   }
 
   setupKeys();
