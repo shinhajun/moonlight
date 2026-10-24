@@ -48,11 +48,11 @@ export function createStore(db, config) {
       }
     },
 
-    insertAccount({ email = null, name, handle, passwordHash = null, trusted = false, credit = config.demoCredit, id = newId('usr') }) {
+    insertAccount({ email = null, name, handle, passwordHash = null, googleSub = null, trusted = false, credit = config.demoCredit, id = newId('usr') }) {
       const t = now();
       db.tx(() => {
-        db.run('INSERT INTO accounts (id, email, name, handle, password_hash, balance, trusted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          id, email, name, s.freeHandle(handle || slug(name)), passwordHash, credit, trusted ? 1 : 0, t);
+        db.run('INSERT INTO accounts (id, email, name, handle, password_hash, google_sub, balance, trusted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          id, email, name, s.freeHandle(handle || slug(name)), passwordHash, googleSub, credit, trusted ? 1 : 0, t);
         if (credit) db.run('INSERT INTO ledger (ts, account_id, kind, amount) VALUES (?, ?, ?, ?)', t, id, 'grant', credit);
       });
       return s.account(id);
@@ -65,6 +65,12 @@ export function createStore(db, config) {
     async login(email, password) {
       const a = s.accountByEmail(email);
       return a && (await checkPassword(password, a.password_hash)) ? a : null;
+    },
+
+    accountByGoogle: (sub) => db.get('SELECT * FROM accounts WHERE google_sub = ?', sub),
+    linkGoogle(accountId, sub) {
+      db.run('UPDATE accounts SET google_sub = ? WHERE id = ?', sub, accountId);
+      return s.account(accountId);
     },
 
     createSession(accountId) {

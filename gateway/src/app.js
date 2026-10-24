@@ -65,6 +65,7 @@ export function createGateway(config) {
     ['POST', '/api/auth/signup', api.signup],
     ['POST', '/api/auth/login', api.login],
     ['POST', '/api/auth/logout', api.logout],
+    ['POST', '/api/auth/google', api.google],
     ['POST', '/api/accounts', api.seedAccount],
     ['GET', '/api/me', api.me],
     ['POST', '/api/me/keys', api.createKey],
