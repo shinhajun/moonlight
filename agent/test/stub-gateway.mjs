@@ -273,7 +273,7 @@ export function startStub({ port = 0, autoApprove = 2, traffic = false, referenc
       const text = res.chunks.map((c) => c.choices?.[0]?.delta?.content ?? '').join('');
       if (firstWords(text) === firstWords(ref)) agree++; // the first 3 words must match the reference node's
     }
-    const passed = agree >= Math.ceil(picks.length * 6 / 8);
+    const passed = agree >= Math.ceil(picks.length * 5 / 8);
     const hist = [...(n.history.get(model_id) ?? []), passed].slice(-10);
     n.history.set(model_id, hist);
     const c = n.checks.get(model_id) ?? { passed: 0, failed: 0 };

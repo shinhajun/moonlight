@@ -2,7 +2,7 @@
 // (and laya-runner, when one is running). Run with: node --test test/
 //
 // Env: OLLAMA_URL (default http://127.0.0.1:11434), LAYA_URL (default http://127.0.0.1:8765),
-//      TEST_CHAT_MODEL (qwen2.5:0.5b), TEST_EMBED_MODEL (nomic-embed-text), TEST_BIG_MODEL (qwen2.5:7b, for the cheat test)
+//      TEST_CHAT_MODEL (qwen2.5:0.5b), TEST_EMBED_MODEL (nomic-embed-text), TEST_BIG_MODEL (qwen2.5:1.5b, for the cheat test)
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -18,7 +18,7 @@ const OLLAMA = process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434';
 const LAYA = process.env.LAYA_URL ?? 'http://127.0.0.1:8765';
 const CHAT = process.env.TEST_CHAT_MODEL ?? 'qwen2.5:0.5b';
 const EMBED = process.env.TEST_EMBED_MODEL ?? 'nomic-embed-text';
-const BIG = process.env.TEST_BIG_MODEL ?? 'qwen2.5:7b';
+const BIG = process.env.TEST_BIG_MODEL ?? 'qwen2.5:1.5b';
 
 const tags = await fetch(`${OLLAMA}/api/tags`).then((r) => r.json()).catch(() => ({ models: [] }));
 const installed = new Map(tags.models.map((m) => [m.name.replace(/:latest$/, ''), m.digest]));
@@ -44,7 +44,10 @@ const once = (emitter, name, pred = () => true, timeout = 15_000) => new Promise
 const BIN = process.env.AGENT_BIN ? [path.resolve(process.env.AGENT_BIN)] : [process.execPath, AGENT];
 
 function startAgent(stub, home, args = [], env = {}) {
-  const proc = spawn(BIN[0], [...BIN.slice(1), '--plain', '--no-browser', '--gateway', stub.url, '--laya', LAYA, ...args], {
+  // --no-yield unless a test is about yielding: other users' GPU work on a shared box must not pause test agents.
+  const yieldArgs = args.includes('--yield-test') ? [] : ['--no-yield'];
+  args = args.filter((x) => x !== '--yield-test');
+  const proc = spawn(BIN[0], [...BIN.slice(1), '--plain', '--no-browser', '--gateway', stub.url, '--laya', LAYA, ...yieldArgs, ...args], {
     env: { ...process.env, MOONLIGHT_HOME: home, OLLAMA_NUM_PARALLEL: '', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -68,6 +71,8 @@ before(async () => {
 after(async () => {
   agent?.proc.kill('SIGKILL');
   await stub?.close();
+  // Hand the shared GPU back: unload the small chat model the tests used.
+  await fetch(`${OLLAMA}/api/generate`, { method: 'POST', body: JSON.stringify({ model: CHAT, keep_alive: 0 }) }).catch(() => {});
   fs.rmSync(home, { recursive: true, force: true });
 });
 
@@ -197,6 +202,78 @@ test('`moonlight logout` forgets the saved token', async () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(home, 'config.json'), 'utf8'));
   assert.equal(cfg.tokens[stub.http], undefined);
 });
+
+test('--keep-warm loads a cold model, then backs off when something else evicts it',
+  { timeout: 60_000 }, async () => {
+    const ps = async () => (await fetch(`${OLLAMA}/api/ps`).then((r) => r.json())).models.map((m) => m.name.replace(/:latest$/, ''));
+    const unload = (model) => fetch(`${OLLAMA}/api/generate`, { method: 'POST', body: JSON.stringify({ model, keep_alive: 0 }) });
+    await unload(CHAT);
+    await waitFor(async () => !(await ps()).includes(CHAT), 10_000, `${CHAT} unloaded`);
+    const h = fs.mkdtempSync(path.join(os.tmpdir(), 'moonlight-warm-'));
+    const hello = once(stub.events, 'hello');
+    const a = startAgent(stub, h, ['--token', `ml_st_${'d'.repeat(32)}`, '--models', CHAT, '--keep-warm', CHAT],
+      { MOONLIGHT_WARM_MS: '1500' });
+    try {
+      await hello;
+      // Other workloads share this Ollama and may load it first; either way it is warm and the agent tracks it.
+      await waitFor(async () => (await ps()).includes(CHAT), 20_000, `${CHAT} warm`);
+      await sleep(2000);
+      await unload(CHAT); // stands in for another workload evicting it
+      await waitFor(() => a.out().includes('was unloaded to make room'), 15_000, 'back-off notice');
+      const after = a.out().length;
+      await sleep(2000); // the first back-off is 2x the warm interval (3 s here; 8 min for real)
+      assert.ok(!a.out().slice(after).includes(`Loaded ${CHAT}`), 'does not fight to reload it during the back-off');
+    } finally {
+      a.proc.kill('SIGKILL');
+      fs.rmSync(h, { recursive: true, force: true });
+    }
+  });
+
+test('--vram-budget leaves out big models; the agent yields while the owner needs the GPU and resumes after quiet',
+  { skip: process.platform === 'win32' && 'uses a shell-script nvidia-smi', timeout: 60_000 }, async () => {
+    // A stand-in nvidia-smi whose numbers the test controls: a 24 GB card, quiet or busy.
+    const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'moonlight-gpu-'));
+    const state = path.join(fake, 'gpu.csv');
+    const quiet = '24564, 2000, 22564, 0';
+    const busy = '24564, 23000, 1564, 95';
+    fs.writeFileSync(state, quiet);
+    fs.writeFileSync(path.join(fake, 'nvidia-smi'), `#!/bin/sh
+case "$*" in
+  *name,memory.total*) echo "Fake GPU 24GB, 24564" ;;
+  *query-gpu*) cat "${state}" ;;
+  *) ;;
+esac
+`, { mode: 0o755 });
+    const h = fs.mkdtempSync(path.join(os.tmpdir(), 'moonlight-yield-'));
+    const hello = once(stub.events, 'hello');
+    const models = [CHAT, installed.has(BIG) && BIG].filter(Boolean).join(',');
+    const a = startAgent(stub, h, ['--yield-test', '--token', `ml_st_${'e'.repeat(32)}`, '--models', models, '--vram-budget', '1'],
+      { PATH: `${fake}:${process.env.PATH}`, MOONLIGHT_YIELD_QUIET_MS: '2000' });
+    try {
+      const { node: n } = await hello;
+      assert.equal(n.hello.node.gpu, 'Fake GPU 24GB');
+      assert.equal(n.hello.node.vram_budget_gb, 1);
+      assert.equal(n.hello.node.vram_free_gb, 22);
+      const listed = n.hello.models.map((m) => m.model_id);
+      assert.ok(listed.includes(CHAT), 'a 0.4 GB model fits a 1 GB budget');
+      if (installed.has(BIG)) assert.ok(!listed.includes(BIG), `${BIG} needs more than 1 GB, so it is not listed`);
+      const paused = once(stub.events, 'frame', (e) => e.node === n && e.msg.t === 'status' && e.msg.paused && e.msg.reason === 'owner_busy', 20_000);
+      fs.writeFileSync(state, busy);
+      const p = await paused;
+      assert.equal(p.msg.vram.budget_gb, 1);
+      const r = await stub.dispatch(n, 'chat', CHAT, chatBody('hi'));
+      assert.equal(r.error?.code, 'paused', 'no new jobs while yielding');
+      const resumed = once(stub.events, 'frame', (e) => e.node === n && e.msg.t === 'status' && !e.msg.paused, 20_000);
+      fs.writeFileSync(state, quiet);
+      await resumed;
+      assert.match(a.out(), /Pausing: only 1\.5 GB of GPU memory free/);
+      await waitFor(() => /quiet again/.test(a.out()), 5000, 'resume notice'); // printed just after the status frame
+    } finally {
+      a.proc.kill('SIGKILL');
+      fs.rmSync(h, { recursive: true, force: true });
+      fs.rmSync(fake, { recursive: true, force: true });
+    }
+  });
 
 test('--cheat-serve advertises the real digest but fails teacher-forced canaries; the honest node passes',
   { skip: !installed.has(BIG) && `${BIG} not installed`, timeout: 240_000 }, async () => {
