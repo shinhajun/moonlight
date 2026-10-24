@@ -256,11 +256,7 @@ export default function Trust() {
 
       <section className="trust-live">
         <header className="block-head">
-          <h2 className="title-md">Inspections as they happen</h2>
-          <span className="livedot live">
-            <i />
-            Live
-          </span>
+          <h2 className="title-md">Recent inspections</h2>
         </header>
         <LiveChecks names={Object.fromEntries(net.nodes.map((n) => [n.node_id, n.name]))} />
       </section>

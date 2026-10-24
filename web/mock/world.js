@@ -319,8 +319,25 @@ export function signup({ email, password, name }) {
 
 export function login({ email, password }) {
   const u = state.byEmail.get(String(email || '').toLowerCase());
+  if (u?.google_sub && !u.pass) return { google: true };
   if (!u || u.pass !== sha(password || '')) return null;
   return u;
+}
+
+// Google sign-in: existing Google account, else link by email, else a new account.
+export function googleAccount({ sub, email, name }) {
+  const byGoogle = [...state.users.values()].find((u) => u.google_sub === sub);
+  if (byGoogle) return { user: byGoogle, created: false };
+  const byEmail = state.byEmail.get(email.toLowerCase());
+  if (byEmail) {
+    if (byEmail.google_sub) return { error: 'This email is linked to a different Google account.' };
+    byEmail.google_sub = sub;
+    return { user: byEmail, created: false };
+  }
+  const u = makeUser({ email, name: name || email.split('@')[0], handle: email.split('@')[0].replace(/[^a-z0-9]+/gi, '-').toLowerCase(), age: 0 });
+  u.pass = null;
+  u.google_sub = sub;
+  return { user: u, created: true };
 }
 
 export function newSession(u) {

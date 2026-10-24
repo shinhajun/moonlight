@@ -5,7 +5,7 @@ import { Badge, CheckStrip, House, Icon, RepGauge, Stamp, VerifiedRivets } from 
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
 import { DecisionPlayground, EmbeddingPlayground } from '../components/Playgrounds.jsx';
 import CodeTabs from '../components/CodeTabs.jsx';
-import { AuthForm } from './Login.jsx';
+import { SignInCta } from './Login.jsx';
 import { snippets } from '../snippets.js';
 
 const METHOD = {
@@ -259,10 +259,7 @@ export default function ModelDetail({ id }) {
             {tab === 'code' ? (
               <CodeTabs tabs={snippets(m.kind, m.id, { verified: verifiedOnly })} />
             ) : me === null ? (
-              <div className="play-auth">
-                <p className="muted small">Sign in to try {m.id}. A request costs a fraction of a cent, paid from demo credit.</p>
-                <AuthForm compact />
-              </div>
+              <SignInCta label={`Sign in to try ${KINDS[m.kind].toLowerCase()}`} note="A request costs a fraction of a cent, paid from demo credit." />
             ) : m.kind === 'decision' ? (
               <DecisionPlayground model={m.id} filters={Object.keys(filters).length ? filters : null} />
             ) : m.kind === 'embedding' ? (

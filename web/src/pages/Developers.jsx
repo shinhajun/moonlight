@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, ago, refreshMe, useMe, AUTO_MODELS } from '../api.js';
 import { Link } from '../router.jsx';
-import { AuthForm } from './Login.jsx';
+import { SignInCta } from './Login.jsx';
 import CodeTabs from '../components/CodeTabs.jsx';
 import { CopyBox, Icon } from '../components/ui.jsx';
 import { BASE, snippets } from '../snippets.js';
@@ -112,10 +112,7 @@ export default function Developers() {
           {me ? (
             <Keys me={me} />
           ) : me === null ? (
-            <div className="panel pad">
-              <p className="muted small">Sign in to create a key. One key works for every model.</p>
-              <AuthForm compact />
-            </div>
+            <SignInCta label="Sign in to create a key" note="One key works for every model." next="/developers" />
           ) : (
             <div className="skeleton" style={{ height: 160 }} />
           )}

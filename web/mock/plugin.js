@@ -203,7 +203,7 @@ function events(req, res) {
 }
 
 // Per-IP limits and once-a-day demo credit, like the gateway.
-const LIMITS = { signup: [5, 3_600_000], login: [20, 900_000], pair: [10, 3_600_000] };
+const LIMITS = { signup: [5, 3_600_000], login: [200, 900_000], pair: [10, 3_600_000] }; // login is looser than prod so screenshot runs fit
 const hits = new Map();
 const creditDay = new Map();
 const ipOf = (req) => req.socket.remoteAddress || 'local';
@@ -255,9 +255,30 @@ async function handle(req, res, next) {
     r.user.balance = credit;
     return send(res, 201, { account: accountOf(r.user), demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) }, { 'set-cookie': cookie(w.newSession(r.user)) });
   }
+  if (m === 'POST' && p === '/api/auth/google') {
+    if (limited(req, res, 'login')) return;
+    const { id_token } = (await readJson(req)) || {};
+    let claims = null;
+    try {
+      claims = JSON.parse(Buffer.from(String(id_token).split('.')[1], 'base64url').toString());
+    } catch {
+      /* not a JWT */
+    }
+    if (!claims?.sub || !claims?.email || claims.email_verified !== true) return fail(res, 401, 'invalid_token', 'Google sign-in failed: the token could not be verified.');
+    const r = w.googleAccount(claims);
+    if (r.error) return fail(res, 409, 'email_taken', r.error);
+    const head = { 'set-cookie': cookie(w.newSession(r.user)) };
+    if (!r.created) return send(res, 200, { account: accountOf(r.user) }, head);
+    const today = new Date().toISOString().slice(0, 10);
+    const credit = creditDay.get(ipOf(req)) === today ? 0 : 5_000_000;
+    if (credit) creditDay.set(ipOf(req), today);
+    r.user.balance = credit;
+    return send(res, 201, { account: accountOf(r.user), demo_credit_microusd: credit, ...(!credit && { notice: NO_CREDIT }) }, head);
+  }
   if (m === 'POST' && p === '/api/auth/login') {
     if (limited(req, res, 'login')) return;
     const u = w.login((await readJson(req)) || {});
+    if (u?.google) return fail(res, 401, 'google_account', 'This account uses Google sign-in.');
     if (!u) return fail(res, 401, 'bad_credentials', 'That email and password do not match.');
     return send(res, 200, { account: accountOf(u) }, { 'set-cookie': cookie(w.newSession(u)) });
   }

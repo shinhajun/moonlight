@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { listOf, useApi, useMe, usd, priceLabel, ms, AUTO_MODELS, ago } from '../api.js';
-import { Link } from '../router.jsx';
+import { Link, navigate } from '../router.jsx';
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
-import { AuthForm } from './Login.jsx';
+import { loginPath } from './Login.jsx';
 import { House, VerifiedRivets } from '../components/ui.jsx';
 
 const STORE = 'ml-chats';
@@ -145,7 +145,7 @@ function ChatWindow({ chat, onUpdate, models, me }) {
               </p>
               <div className="chips">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="chip" onClick={() => me && send(s)} disabled={!me}>
+                  <button key={s} type="button" className="chip" onClick={() => (me ? send(s) : navigate(loginPath('/chat')))}>
                     {s}
                   </button>
                 ))}
@@ -172,13 +172,14 @@ function ChatWindow({ chat, onUpdate, models, me }) {
             <Composer onSend={(t) => send(t)} onStop={stop} busy={busy} autoFocus placeholder={`Message ${AUTO_MODELS.find((a) => a.id === model)?.label.toLowerCase() || model}`} />
           ) : (
             me === null && (
-              <div className="chat-signin panel">
-                <div>
-                  <h2 className="title-md">Sign in to chat</h2>
-                  <p className="muted small">Messages cost fractions of a cent, paid from demo credit.</p>
-                </div>
-                <AuthForm compact />
-              </div>
+              <Link to={loginPath('/chat')} className="composer composer-cta">
+                <span>Sign in to chat</span>
+                <span className="composer-btn" aria-hidden>
+                  <svg width="18" height="18" viewBox="0 0 16 16">
+                    <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </Link>
             )
           )}
           <PrivacyLine verifiedOnly={verifiedOnly} setVerifiedOnly={setVerifiedOnly} />

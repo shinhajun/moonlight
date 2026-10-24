@@ -315,7 +315,11 @@ export function Message({ m, onRetry, onSuggest }) {
         <div className="notice warn">
           <Icon name="flagged" />
           <div>
-            {m.error?.status === 402 ? 'Your balance is too low for this request.' : m.error?.message || 'Something went wrong.'}{' '}
+            {m.error?.status === 402
+              ? 'Your balance is too low for this request.'
+              : m.error?.status >= 500 || !m.error?.status
+                ? "Couldn't reach a computer just now."
+                : m.error?.message || 'Something went wrong.'}{' '}
             <button type="button" className="link" onClick={() => onRetry(m.id)}>
               Try again
             </button>
