@@ -105,9 +105,17 @@ Rules:
   1. Take a canary prompt and the reference node's greedy answer for it, with `temperature:0`, `seed:42`, and `reasoning_effort:"none"`.
   2. At about 6 word boundaries in that answer, send the prompt plus the reference prefix as a trailing `assistant` message (prefill), with `max_tokens:4`.
   3. Run the same prefilled boundary job on the reference node too, and compare the target's first next word with the *reference node's* next word for that same input, not with the word in the reference answer. This works for models that continue a prefill and for ones that restart (gemma4, glm).
-  4. Use 8 boundaries (a config knob). Passing takes 7 of 8.
+  4. Use 8 boundaries (a config knob), skipping the very first boundary of the answer. Each prefilled boundary job uses `max_tokens: 8`.
+  5. Compare the first **3 words** (tokens matched by `/\w+|[^\w\s]/`, lowercased) of the target's continuation with the reference node's continuation for the same input. A boundary agrees only if all 3 match. Passing takes ≥ 6 of 8.
 
-  Measured: self 0.97, CPU vs GPU 0.94, a 0.5b model serving for 3b 0.69. Canary jobs look like ordinary short buyer jobs.
+  Measured on qwen2.5:7b over 42 positions. One-word agreement is too weak, because a small model of the same family guesses the big model's next word too well:
+
+  | Check | Honest CPU vs GPU | Cheater (0.5b serving 7b) | Cheater passes | Honest fails |
+  |---|---|---|---|---|
+  | 1-word, 7/8 | 0.93 | 0.69 | ~24% | ~10% |
+  | 3-word, 6/8 | 0.90 | 0.33 | ~2% | ~3% |
+
+  Canary jobs look like ordinary short buyer jobs.
 - **Thinking models** (qwen3.5, gemma4, glm-4.7-flash) put output into `delta.reasoning`:
   - Canaries always send `reasoning_effort:"none"`.
   - Metering counts reasoning tokens as output.
