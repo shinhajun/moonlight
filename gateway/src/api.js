@@ -293,6 +293,7 @@ export function createApi(ctx) {
       node_id: n.id, name: n.name, os: info.os ?? null, arch: info.arch ?? null, cpu: info.cpu ?? null, ram_gb: info.ram_gb ?? null,
       gpu: info.gpu ?? null, vram_gb: info.vram_gb ?? null, online: !!conn, last_seen: conn ? now() : n.last_seen, agent_version: n.agent_version,
       trusted: !!n.trusted, max_concurrency: conn?.maxConcurrency ?? null, draining: !!conn?.draining,
+      paused: !!conn?.paused, reason: conn?.paused ? conn.pauseReason : null, vram: conn?.vram ?? null, vram_budget_gb: info.vram_budget_gb ?? null,
       earnings: { total: e.total, today: e.today }, models: store.listingsOfNode(n.id).map(modelRow),
     };
   }
@@ -373,8 +374,9 @@ export function createApi(ctx) {
         const conn = hub.conns.get(n.id);
         listings.push({
           listing_id: l.id, model_id: l.model_id, seller: { id: seller.id, name: seller.name, handle: seller.handle },
-          node: { ...info, node_id: n.id, name: n.name, online: !!conn && !conn.paused, trusted: !!n.trusted },
-          price: l.price, paused: l.paused, p50_ms: p50(ctx.latency.get(l.id) || []), reputation: reputation(ctx, l),
+          node: { ...info, node_id: n.id, name: n.name, online: !!conn, trusted: !!n.trusted },
+          paused: l.paused || !!conn?.paused, reason: conn?.paused ? conn.pauseReason : l.paused ? 'manual' : null, vram: conn?.vram ?? null,
+          price: l.price, p50_ms: p50(ctx.latency.get(l.id) || []), reputation: reputation(ctx, l),
           verification: verificationOf(l), verify_method: ctx.verifier.methodFor(l),
           held_microusd: l.state === 'flagged' ? db.get("SELECT COALESCE(SUM(amount), 0) AS s FROM ledger WHERE listing_id = ? AND kind = 'earn'", l.id).s : 0,
         });

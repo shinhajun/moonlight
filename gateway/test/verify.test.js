@@ -220,7 +220,7 @@ test('a same-family cheater that gets the next word right still fails the three-
 
   const id = cheat.listing('qwen2.5:7b').listing_id;
   const cheatChecks = await checkTimes(g, id, 2);
-  assert.ok(cheatChecks.every((c) => !c.passed && c.score < 0.75));
+  assert.ok(cheatChecks.every((c) => !c.passed && c.score < 0.625));
   assert.equal(g.listing(id).state, 'flagged');
 });
 
@@ -393,4 +393,24 @@ test('on a single-slot node, a canary waits while buyers are queued for it, then
   const c = await check;
   assert.equal(c.passed, true);
   assert.equal(node.jobs.length, 2 + 8);
+});
+
+test('chat canaries pass at 5 of 8 boundaries and fail at 4', async (t) => {
+  const g = await startGateway();
+  t.after(g.close);
+  await g.agent({ token: TRUSTED_TOKEN, name: 'ref', maxConcurrency: 4, models: [chatModel('qwen2.5:1.5b')], behavior: honest });
+  // Disagrees on its first `misses` prefilled probes of each check, then answers honestly.
+  const flaky = (misses) => {
+    let probes = 0;
+    return (job, io) => {
+      const probe = job.body.messages.at(-1).role === 'assistant';
+      return probe && probes++ % 8 < misses ? cheater(job, io) : honest(job, io);
+    };
+  };
+  const ok = await g.agent({ name: 'three-misses', models: [chatModel('qwen2.5:1.5b')], behavior: flaky(3) });
+  const bad = await g.agent({ name: 'four-misses', models: [chatModel('qwen2.5:1.5b')], behavior: flaky(4) });
+  const pass = await g.ctx.verifier.check(ok.listing('qwen2.5:1.5b').listing_id);
+  assert.deepEqual([pass.score, pass.passed, pass.threshold], [5 / 8, true, 0.625]);
+  const fail = await g.ctx.verifier.check(bad.listing('qwen2.5:1.5b').listing_id);
+  assert.deepEqual([fail.score, fail.passed], [4 / 8, false]);
 });

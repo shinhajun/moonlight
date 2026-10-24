@@ -255,7 +255,7 @@ export function createVerifier(ctx) {
   async function check(listingId) {
     const listing = store.listing(listingId);
     if (!listing || listing.policy !== 'live' || listing.paused || busy.has(listingId)) return null;
-    const conn = [...hub.conns.values()].find((c) => !c.trusted && c.listings.get(listing.model_id) === listing.id);
+    const conn = [...hub.conns.values()].find((c) => !c.trusted && !c.paused && c.listings.get(listing.model_id) === listing.id);
     if (!conn) return null;
     busy.add(listingId);
     try {
