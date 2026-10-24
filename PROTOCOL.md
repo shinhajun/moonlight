@@ -84,7 +84,8 @@ Rules:
 ## Routing
 
 - **Choosing a listing:** The candidates are live listings of the requested `model_id` that pass the buyer's filters. Each gets `score = w_price·price + w_lat·p50_latency + w_load·inflight − w_rep·reputation`, and the lowest score wins.
-- **Retries:** If a node errors or times out before its first chunk, the gateway retries the next candidate. The buyer never sees that.
+- **Retries:** If a node errors or times out (60 s) before its first chunk, the gateway retries the next candidate, invisibly to the buyer. If no other online seller could take the job, it keeps waiting on the current node up to the job deadline (180 s) instead, because cold model loads on home machines can take tens of seconds.
+- **Streams open on dispatch:** A stream sends `200` and the `x-moonlight-*` headers as soon as the job is dispatched. Until the first token, it sends `: waiting model=<id> elapsed_s=N` every 5 s. The web shows "Warming up the model…" once `elapsed_s ≥ 3`.
 - **Mid-stream failover:** If a node drops after streaming has started, the gateway re-issues the job to the next candidate with the partial output appended as a trailing `assistant` message (prefill) and keeps streaming to the buyer seamlessly.
   - Some models continue from the prefill (qwen2.5, qwen3.5 with reasoning off). Others restart from scratch (gemma4, glm-4.7-flash).
   - So the gateway buffers the new node's output until it either diverges from the already-sent partial text or passes it, drops any repeated prefix, and forwards only new text. The buyer never sees duplicated text.
