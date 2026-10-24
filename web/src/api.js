@@ -61,7 +61,7 @@ async function errorFrom(res) {
 // Server or network failures read as one plain sentence; client errors keep the server's words.
 export function serviceError(err) {
   if (err?.status === 402) return 'Your balance is too low for this request.';
-  if (!err?.status || err.status >= 500) return "Couldn't reach a computer just now. Try again in a moment.";
+  if (!err?.status || err.status >= 500) return "Couldn't reach a GPU just now. Try again in a moment.";
   return err.message;
 }
 

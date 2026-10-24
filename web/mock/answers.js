@@ -1,13 +1,14 @@
 // Canned chat answers and a heuristic System-1 answerer for the mock.
 
 const CANNED = [
-  [/moonlight|moonlighting|night shift/i, `Moonlighting used to mean a second job worked after dark. Here it means your computer takes one: while you sleep, the models already on your disk answer other people's requests, and you get paid per token.\n\nNothing about the model leaves your machine except its answers. The gateway sends work out, meters it, and pays you 90% of what the buyer spent.`],
-  [/steam|industrial|factory|cottage|revolution/i, `Before the mills, English cloth was made through the **putting-out system**: merchants delivered raw wool to cottages, families spun and wove it at home, and the merchant collected the finished cloth.\n\nThe factory won on coordination, not on craft. One building, one clock, one owner. Moonlight bets that the network can now do the coordinating, so the work can go back out to the cottages.`],
-  [/haiku|poem/i, `Fans hum in the dark,\na laptop lid left open,\nearning while you dream.`],
-  [/code|python|function|javascript/i, "Here's a small function that formats micro-dollars:\n\n```python\ndef usd(micro: int) -> str:\n    dollars = micro / 1_000_000\n    return f\"${dollars:,.6f}\" if dollars < 0.01 else f\"${dollars:,.2f}\"\n```\n\nKeep money as integers everywhere and only format at the edge."],
-  [/hello|hi\b|hey/i, `Hello! I'm running on someone's home machine tonight. Ask me anything you'd ask any chat model; just don't paste secrets, since the person who owns this computer can read prompts.`],
+  [/moonlight|spare|vram|earn/i, `Moonlight lets your GPU earn from the memory your own apps aren't using. While you work or play, the agent watches free VRAM; when there's room, it serves open models to buyers and you get 90% of what they pay.\n\nWhen your own apps need the GPU, Moonlight pauses and unloads its models, then picks up again once things are quiet.`],
+  [/embedding|vector/i, `An embedding turns text into a list of numbers so that similar meanings land close together. Search compares the vector of a question with the vectors of your documents and returns the nearest ones.\n\nThey are cheap to compute, which is why embedding models are a good fit for spare GPU memory.`],
+  [/sql|query|duplicate/i, "Here's a query that finds duplicate emails:\n\n\`\`\`sql\nSELECT email, COUNT(*) AS n\nFROM users\nGROUP BY email\nHAVING COUNT(*) > 1\nORDER BY n DESC;\n\`\`\`\n\nAdd \`lower(email)\` in both places if case should not matter."],
+  [/quantiz/i, `Quantization stores weights in fewer bits, for example 4 instead of 16. You trade a little accuracy for a model that is about four times smaller and faster to load, which is what lets a 35B model fit on a single consumer GPU.`],
+  [/code|python|function|javascript/i, "Here's a small function that formats micro-dollars:\n\n\`\`\`python\ndef usd(micro: int) -> str:\n    dollars = micro / 1_000_000\n    return f\"\${dollars:,.6f}\" if dollars < 0.01 else f\"\${dollars:,.2f}\"\n\`\`\`\n\nKeep money as integers everywhere and only format at the edge."],
+  [/hello|hi\b|hey/i, `Hello! This answer is coming from a seller's GPU on Moonlight. Ask me anything, but don't paste secrets: the seller can see prompts.`],
 ];
-const GENERIC = `Good question. The short answer: it depends on what you optimise for.\n\nIf you need speed, a small model on a nearby machine answers in a few hundred milliseconds. If you need depth, route to a larger model and accept a slower first token. Moonlight lets you choose per request: pin a seller, cap the price, or ask for verified machines only.`;
+const GENERIC = `Good question. The short answer: it depends on what you optimise for.\n\nIf you need speed, a small model answers in a few hundred milliseconds. If you need depth, route to a larger model and accept a slower first token. Moonlight lets you choose per request: pin a seller, cap the price, or ask for verified GPUs only.`;
 
 export function chatAnswer(messages, model_id) {
   const last = [...messages].reverse().find((m) => m.role === 'user');

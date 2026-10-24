@@ -55,7 +55,7 @@ function Terminal({ os }) {
         {'\n'}
         <span className="t-dim">Found</span> Ollama <span className="t-dim">(6 models)</span>, LM Studio <span className="t-dim">(1 model)</span>
         {'\n\n'}
-        Approve this computer with the code{'\n'}
+        Approve this GPU with the code{'\n'}
         {'  '}
         <span className="t-code">
           {code.slice(0, n)}
@@ -92,17 +92,17 @@ export default function AddComputer() {
   return (
     <main className="wrap page add-page">
       <header className="page-head">
-        <p className="kicker">Sell your computer</p>
-        <h1 className="title-xl">Add a computer</h1>
-        <p className="lede">About a minute. Your models stay on your disk; Moonlight only sends your computer work and pays you for it.</p>
+        <p className="eyebrow">Start earning</p>
+        <h1 className="h1">Add your GPU</h1>
+        <p className="lede">A few minutes. Your models stay on your disk, and Moonlight only uses the VRAM your own apps leave free.</p>
       </header>
 
       <div className="add-grid">
         <ol className="pipeline">
           <li className="pipe-step">
-            <span className="valve">1</span>
+            <span className="step-dot num">1</span>
             <div className="pipe-body">
-              <h2 className="title-md">Install</h2>
+              <h2 className="h3">Install</h2>
               <div className="os-tabs" role="tablist" aria-label="Operating system">
                 {OSES.map(([k, label]) => (
                   <button key={k} type="button" role="tab" aria-selected={os === k} onClick={() => setOs(k)}>
@@ -116,9 +116,9 @@ export default function AddComputer() {
             </div>
           </li>
           <li className="pipe-step">
-            <span className="valve">2</span>
+            <span className="step-dot num">2</span>
             <div className="pipe-body">
-              <h2 className="title-md">
+              <h2 className="h3">
                 Run <code className="cmd">moonlight</code>
               </h2>
               <p className="muted">It looks for the models you already have, shows a code like <b className="mono">ABCD-1234</b>, and opens this site.</p>
@@ -126,9 +126,9 @@ export default function AddComputer() {
             </div>
           </li>
           <li className="pipe-step">
-            <span className="valve">3</span>
+            <span className="step-dot num">3</span>
             <div className="pipe-body">
-              <h2 className="title-md">Approve</h2>
+              <h2 className="h3">Approve</h2>
               <p className="muted">The approval page opens by itself. If it doesn&apos;t, type the code here.</p>
               <form className="code-form" onSubmit={go}>
                 <input
@@ -155,7 +155,7 @@ export default function AddComputer() {
         </ol>
 
         <aside className="add-aside">
-          <h3 className="title-md">What happens next</h3>
+          <h3 className="h3">What happens next</h3>
           <dl className="facts">
             <div>
               <dt>Discovery</dt>
@@ -170,12 +170,16 @@ export default function AddComputer() {
               <dd>Models whose license forbids commercial use stay off the market. We ask before listing anything without a license.</dd>
             </div>
             <div>
-              <dt>Inspections</dt>
-              <dd>Hidden test jobs compare your answers with other machines. Honest computers earn a Verified badge.</dd>
+              <dt>Your apps first</dt>
+              <dd>When your own apps need the GPU, Moonlight pauses and unloads its models. It resumes once things are quiet.</dd>
+            </div>
+            <div>
+              <dt>Verification</dt>
+              <dd>Hidden test jobs compare your answers with other GPUs. Honest sellers earn a Verified badge.</dd>
             </div>
             <div>
               <dt>Privacy</dt>
-              <dd>Buyers are told their prompts run on a community computer. Don&apos;t log or keep what you serve.</dd>
+              <dd>Buyers are told their prompts run on a seller&apos;s GPU. Don&apos;t log or keep what you serve.</dd>
             </div>
           </dl>
         </aside>

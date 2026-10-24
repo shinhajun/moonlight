@@ -1,8 +1,8 @@
 // Chat engine shared by the Chat page and model playgrounds: streaming, reasoning, queueing,
-// capacity errors, failover notes, and a receipt per answer naming the computer that served it.
+// capacity errors, failover notes, and a receipt per answer naming the GPU that served it.
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, serviceError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS } from '../api.js';
-import { Badge, House, Icon } from './ui.jsx';
+import { Badge, Machine, Icon } from './ui.jsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -54,7 +54,7 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
         await streamChat('/api/playground/chat', body, {
           signal: ctrl.signal,
           onQueue: (q) => update(id, () => ({ status: 'queued', queue: q })),
-          // Dispatched to a computer but no token yet: it may be loading the model from disk.
+          // Dispatched to a GPU but no token yet: it may be loading the model into VRAM.
           onWaiting: (w) =>
             update(id, (m) => (m.content || m.reasoning ? {} : { status: 'dispatched', warm: { model: w.model, since: m.warm?.since ?? Date.now() - w.elapsed_s * 1000 } })),
           onChunk: (c) => {
@@ -230,23 +230,20 @@ function Warming({ warm, model }) {
           <i />
           <i />
         </span>
-        Sent to a home computer…
+        Sent to a seller&apos;s GPU…
       </div>
     );
   }
   return (
     <div className="warming" role="status">
-      <span className="kettle" aria-hidden>
-        <i />
-        <i />
-        <i />
-      </span>
-      <div>
-        <b>
-          Warming up {warm.model && warm.model !== model ? warm.model : 'the model'}… <span className="num">{s} s</span>
-        </b>
-        <p>Home computers load a model when it’s first asked for. The next answers come quickly.</p>
+      <div className="warming-row">
+        <span>
+          Loading {warm.model && warm.model !== model ? <span className="mono">{warm.model}</span> : 'the model'} on the seller&apos;s GPU…
+        </span>
+        <span className="num">{s} s</span>
       </div>
+      <span className="warming-bar" aria-hidden />
+      <p>The first request loads the model into VRAM. The next ones are fast.</p>
     </div>
   );
 }
@@ -271,14 +268,14 @@ function Receipt({ meta, model }) {
   return (
     <div className="receipt">
       <span className="receipt-who">
-        <House lit size={14} />
+        <Machine online size={14} />
         {name ? (
           <>
             <b>{name}</b>
             <span className="faint">{meta.hardware}</span>
           </>
         ) : (
-          <span className="faint">a community computer</span>
+          <span className="faint">a seller&apos;s GPU</span>
         )}
       </span>
       <span className="receipt-facts num">
@@ -310,7 +307,7 @@ export function Message({ m, onRetry, onSuggest }) {
             <i />
             <i />
           </span>
-          Finding a free computer…
+          Finding a free GPU…
         </div>
       )}
       {m.status === 'queued' && m.queue && <Queue q={m.queue} />}
@@ -323,14 +320,14 @@ export function Message({ m, onRetry, onSuggest }) {
       )}
       {m.meta?.failovers?.length > 0 && (
         <p className="failover-note" title={m.meta.failovers.map((f) => `${f.from_node} → ${f.to_node} at token ${f.at_token}`).join('\n')}>
-          <Icon name="arrow" size={12} /> Switched to another computer mid-answer. Nothing was repeated or billed twice.
+          <Icon name="arrow" size={12} /> Switched to another GPU mid-answer. Nothing was repeated or billed twice.
         </p>
       )}
       {m.status === 'lost' && (
         <div className="notice warn">
           <Icon name="flagged" />
           <div>
-            The computer answering this went offline and no other was free. You were billed only for the words above.{' '}
+            The GPU answering this went offline and no other was free. You were billed only for the words above.{' '}
             <button type="button" className="link" onClick={() => onRetry(m.id)}>
               Retry
             </button>
@@ -340,7 +337,7 @@ export function Message({ m, onRetry, onSuggest }) {
       {m.status === 'no_capacity' && (
         <div className="capacity">
           <p>
-            <b>No computer is serving {m.model} right now.</b> Try one of these:
+            <b>No GPU is serving <span className="mono">{m.model}</span> right now.</b> Try one of these:
           </p>
           <div className="chips">
             {(m.error?.suggestions?.length ? m.error.suggestions : AUTO_MODELS.filter((a) => a.kind === 'chat').map((a) => a.id)).map((s) => (
@@ -418,7 +415,7 @@ export function PrivacyLine({ verifiedOnly, setVerifiedOnly, disabledVerified })
   return (
     <div className="privacy">
       <span className="privacy-text">
-        <Icon name="eye" size={14} /> Runs on a community computer. The seller can see your prompt.
+        <Icon name="eye" size={14} /> Runs on a seller&apos;s GPU. The seller can see your prompt.
       </span>
       {setVerifiedOnly && (
         <button
@@ -428,7 +425,7 @@ export function PrivacyLine({ verifiedOnly, setVerifiedOnly, disabledVerified })
           className="switch"
           onClick={() => setVerifiedOnly(!verifiedOnly)}
           disabled={disabledVerified}
-          title={disabledVerified ? 'Private models are checked for consistency only' : 'Only route to computers that passed inspection'}
+          title={disabledVerified ? 'Private models are checked for consistency only' : 'Only route to GPUs that passed verification'}
         >
           <span className="track" />
           Verified only

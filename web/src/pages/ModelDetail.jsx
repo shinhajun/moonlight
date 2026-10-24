@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApi, useMe, usd, ms, int, priceLabel, hardware, osLabel, params, bytes, badgeOf, KINDS } from '../api.js';
 import { Link } from '../router.jsx';
-import { Badge, CheckStrip, House, Icon, RepGauge, Stamp, VerifiedRivets } from '../components/ui.jsx';
+import { Badge, CheckStrip, Machine, Icon, RepMeter, ShareBar } from '../components/ui.jsx';
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
 import { DecisionPlayground, EmbeddingPlayground } from '../components/Playgrounds.jsx';
 import CodeTabs from '../components/CodeTabs.jsx';
@@ -9,7 +9,7 @@ import { SignInCta } from './Login.jsx';
 import { snippets } from '../snippets.js';
 
 const METHOD = {
-  trusted: ['Trusted reference', 'Hidden test jobs are compared with an operator-run reference machine.'],
+  trusted: ['Trusted reference', 'Hidden test jobs are compared with an operator-run reference GPU.'],
   peer: ['Peer-checked', 'Nobody official runs this model, so test jobs go to several sellers and the odd one out fails.'],
   consistent: ['Consistent only', 'Not independently verified yet: no reference or second seller to compare with. We check it answers the same way twice.'],
 };
@@ -19,11 +19,12 @@ function SellerRow({ l, pinned, onPin, kind }) {
   const badge = badgeOf(v);
   const flagged = badge === 'flagged';
   const paused = l.paused || l.status === 'paused';
+  const pauseLabel = l.reason === 'owner_busy' ? 'Owner is using their computer' : 'Paused by seller';
   const price = priceLabel(l.price, kind);
   return (
     <li className={`srow ${flagged ? 'flagged' : ''} ${pinned ? 'pinned' : ''} ${!l.node.online ? 'offline' : ''}`}>
       <div className="srow-home">
-        <House lit={l.node.online && !flagged} boarded={flagged} size={30} />
+        <Machine online={l.node.online && !flagged} flagged={flagged} size={30} />
         <div>
           <b className="srow-name">{l.node.name}</b>
           <span className="srow-seller">
@@ -41,7 +42,7 @@ function SellerRow({ l, pinned, onPin, kind }) {
       </div>
       <div className="srow-p50 num">{ms(l.p50_ms)}</div>
       <div className="srow-rep">
-        <RepGauge value={l.reputation} />
+        <RepMeter value={l.reputation} />
       </div>
       <div className="srow-check">
         <Badge state={badge} verification={v.passed != null ? v : null} />
@@ -49,7 +50,9 @@ function SellerRow({ l, pinned, onPin, kind }) {
       </div>
       <div className="srow-act">
         {flagged ? null : paused ? (
-          <span className="faint small">Paused</span>
+          <span className="faint small" title={pauseLabel}>
+            {l.reason === 'owner_busy' ? 'Owner busy' : 'Paused'}
+          </span>
         ) : !l.node.online ? (
           <span className="faint small">Offline</span>
         ) : (
@@ -60,7 +63,7 @@ function SellerRow({ l, pinned, onPin, kind }) {
       </div>
       {flagged && (
         <div className="srow-flag">
-          <Stamp>Flagged</Stamp>
+          <Badge state="flagged" size="lg" withTip={false} />
           <p>
             Failed {v.failed ?? 'several'} recent inspections: its answers didn&apos;t match <code>{l.model_id}</code>. Suspended{l.held_microusd ? <>, and <b>{usd(l.held_microusd)}</b> of earnings held</> : ', earnings held'}.
           </p>
@@ -79,7 +82,7 @@ function ChatPlayground({ model, filters }) {
   return (
     <div className="mini-chat">
       <div className="mini-msgs">
-        {messages.length === 0 && <p className="faint mini-hint">Ask anything. The answer streams from a home computer, with a receipt.</p>}
+        {messages.length === 0 && <p className="faint mini-hint">Ask anything. The answer streams from a seller&apos;s GPU, with a receipt showing who served it and what it cost.</p>}
         {messages.map((m) => (
           <Message key={m.id} m={m} onRetry={retry} onSuggest={(id, s) => retry(id, s)} />
         ))}
@@ -100,11 +103,11 @@ export default function ModelDetail({ id }) {
   if (error?.status === 404) {
     return (
       <main className="wrap page narrow-page">
-        <p className="kicker">Models</p>
-        <h1 className="title-lg">Nobody is selling {id} right now.</h1>
+        <p className="eyebrow">Models</p>
+        <h1 className="h2">Nobody is selling {id} right now.</h1>
         <p className="muted">Models appear here when at least one seller lists them.</p>
         <p>
-          <Link to="/models" className="btn btn-secondary">
+          <Link to="/models" className="btn">
             Browse models
           </Link>
         </p>
@@ -134,9 +137,9 @@ export default function ModelDetail({ id }) {
       <header className="detail-head">
         <div className="detail-title">
           <div className="detail-tags">
-            <span className="mcard-kind">{KINDS[m.kind]}</span>
-            {m.private && <span className="tag tag-ink">Private · weights stay home</span>}
-            {m.thinking && <span className="tag">Thinks before answering</span>}
+            <span className={`kind kind-${m.kind}`}>{KINDS[m.kind]}</span>
+            {m.private && <span className="tag">Private · weights never leave the seller</span>}
+            {m.thinking && <span className="tag">Reasoning model</span>}
           </div>
           <h1 className="detail-name">{m.id}</h1>
           <p className="lede">{m.summary}</p>
@@ -184,7 +187,7 @@ export default function ModelDetail({ id }) {
         </div>
         <dl className="detail-stats">
           <div>
-            <dt>Homes online</dt>
+            <dt>GPUs online</dt>
             <dd className="num">{m.sellers_online}</dd>
           </div>
           <div>
@@ -194,13 +197,13 @@ export default function ModelDetail({ id }) {
             </dd>
           </div>
           <div>
-            <dt>Typical wait</dt>
+            <dt>Latency p50</dt>
             <dd className="num">{ms(m.p50_ms)}</dd>
           </div>
           <div>
             <dt>Verified</dt>
             <dd>
-              <VerifiedRivets share={m.verified_share} total={m.sellers_online} /> <span className="num">{Math.round(m.verified_share * 100)}%</span>
+              <ShareBar share={m.verified_share} total={m.sellers_online} /> <span className="num">{Math.round(m.verified_share * 100)}%</span>
             </dd>
           </div>
           <div className="detail-method" title={methodTip}>
@@ -214,15 +217,15 @@ export default function ModelDetail({ id }) {
       <div className="detail-grid">
         <section className="sellers" aria-label="Sellers">
           <header className="block-head">
-            <h2 className="title-lg">Who sells it</h2>
-            <span className="faint small">{listings.length} listings · cheapest healthy home answers first</span>
+            <h2>Sellers</h2>
+            <span className="faint small">{listings.length} listings · requests go to the best-priced healthy GPU</span>
           </header>
           <div className="srow srow-head" aria-hidden>
-            <span>Home</span>
+            <span>GPU</span>
             <span>Price</span>
-            <span>Typical wait</span>
+            <span>Latency</span>
             <span>Reputation</span>
-            <span>Inspection</span>
+            <span>Verification</span>
             <span />
           </div>
           <ul className="srows">
