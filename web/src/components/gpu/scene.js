@@ -377,6 +377,7 @@ function buildGpu() {
     object: gpu,
     moves: [move(bracket, -0.6, 0, 0), move(back, 0, 0, -0.75), move(sink, 0, 0, 0.78), move(shroud, 0, 0, 1.5), ...fans.map((f) => move(f, 0, 0, 2.15))],
     rotors: fans.map((f) => f.userData.rotor),
+    spin: -1,
     chips: chips.map((mat, i) => ({ mats: [mat], glow: chipGlows[i] })),
     board,
     traceGlow,
@@ -476,6 +477,7 @@ function rigFromGltf(model) {
     object: wrap,
     moves,
     rotors,
+    spin: 1, // positive rotation.z is the blades' working direction in gpu.glb
     chips,
     board: null,
     traceGlow: pcb ? glowAt(pcb, L * 1.2, H * 1.4, 0) : null,
@@ -529,34 +531,39 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   // Contact shadow: a wide soft layer and a tight dark core under the card.
   const shadowTex = shadowTexture();
   const shadow = new Group();
-  const soft = new Mesh(new PlaneGeometry(7.2, 3), new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.45 }));
-  const core = new Mesh(new PlaneGeometry(4.6, 1.1), new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.6 }));
+  const soft = new Mesh(new PlaneGeometry(3.6, 1.7), new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.45 }));
+  const core = new Mesh(new PlaneGeometry(2.1, 0.6), new MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.6 }));
   core.position.y = 0.001;
   shadow.add(soft, core);
   shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = -1.45;
+  shadow.position.y = -L / 2 - 0.35;
   scene.add(shadow);
 
+  // root: yaw, tilt and float. pose: stands the card up, long axis vertical, fans toward the viewer.
   const root = new Group();
+  const pose = new Group();
+  pose.rotation.z = Math.PI / 2;
+  root.add(pose);
   scene.add(root);
   let rig = null;
   const use = (r, source) => {
     rig = r;
-    root.add(r.object);
+    rig.source = source;
+    pose.add(r.object);
     api.renderOnce();
     onReady(source);
   };
 
-  const state = { target: 0, t: 0, px: 0, py: 0, tx: 0, ty: 0, load: 0.4, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
+  const state = { target: 0, t: 0, load: 0.4, last: performance.now(), lastInput: performance.now(), raf: 0, running: false, frame: 0 };
 
-  // Lifts the card above the docked VRAM panel; glows are softer on light backgrounds.
-  let frameY = 0.3;
+  // Glows are softer on light backgrounds and breathe slowly when idle.
   let glowScale = 1;
   function layout(t, time) {
     if (!rig) return;
     const e = smooth(0, 1, t);
     glowScale = document.documentElement.dataset.theme === 'light' ? 0.55 : 1;
-    rig.staticGlows.forEach((g) => (g.material.opacity = g.userData.base * glowScale));
+    const breath = reduced ? 1 : 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(time * 1.4));
+    rig.staticGlows.forEach((g) => (g.material.opacity = g.userData.base * glowScale * breath));
     rig.moves.forEach((m) => m.obj.position.copy(m.base).addScaledVector(m.delta, e));
     rig.chips.forEach((c, i) => {
       const k = smooth(0.42 + i * 0.035, 0.56 + i * 0.035, t);
@@ -565,14 +572,15 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     });
     if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.55, 1, t);
     if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.6, 1, t) * glowScale;
-    const sway = reduced ? 0 : Math.sin(time * 0.25) * 0.06;
-    root.rotation.y = MathUtils.lerp(-0.6, -1.0, e) + state.px * 0.28 + sway;
-    root.rotation.x = MathUtils.lerp(0.2, 0.3, e) + state.py * 0.14;
-    root.position.y = frameY + (reduced ? 0 : Math.sin(time * 0.6) * 0.035);
-    const s = MathUtils.lerp(1, 0.84, e);
-    root.scale.setScalar(s);
+    // About 17° of yaw at rest, turning further as it opens so the stack of layers reads; a slow sway, no cursor follow.
+    const sway = reduced ? 0 : Math.sin(time * 0.3) * 0.07;
+    root.rotation.y = MathUtils.lerp(-0.3, -0.6, e) + sway;
+    root.rotation.x = MathUtils.lerp(0.05, 0.1, e);
+    // Opening pushes layers toward the viewer, which reads as a shift left; slide right to keep the stack centered.
+    root.position.x = 0.6 * e;
+    root.position.y = reduced ? 0 : Math.sin(time * 0.6) * 0.03;
+    root.scale.setScalar(MathUtils.lerp(1, 0.8, e));
     const light = document.documentElement.dataset.theme === 'light';
-    shadow.position.y = frameY - 1.45;
     shadow.children[0].material.opacity = (light ? 0.22 : 0.45) * (1 - 0.35 * e);
     shadow.children[1].material.opacity = (light ? 0.3 : 0.6) * (1 - 0.5 * e);
   }
@@ -580,13 +588,11 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   function frame(now) {
     const dt = Math.min(0.05, (now - state.last) / 1000);
     state.last = now;
-    // Critically damped follow for scroll and pointer, so motion stays smooth at any scroll speed.
+    // Critically damped follow for scroll, so motion stays smooth at any scroll speed.
     const k = 1 - Math.exp(-dt * 6);
     state.t += (state.target - state.t) * k;
-    state.px += (state.tx - state.px) * (1 - Math.exp(-dt * 4));
-    state.py += (state.ty - state.py) * (1 - Math.exp(-dt * 4));
-    const spin = dt * (2.2 + 4.5 * state.load);
-    rig?.rotors.forEach((r, i) => (r.rotation.z -= spin * (1 + i * 0.03)));
+    const spin = dt * (1.2 + 3.5 * state.load);
+    rig?.rotors.forEach((r, i) => (r.rotation.z += rig.spin * spin * (1 + i * 0.03)));
     layout(state.t, now / 1000);
     renderer.render(scene, camera);
   }
@@ -610,12 +616,6 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
         renderer.render(scene, camera);
       }
     },
-    setPointer(x, y) {
-      if (reduced) return;
-      state.tx = x;
-      state.ty = y;
-      state.lastInput = performance.now();
-    },
     setLoad(l) {
       state.load = l;
     },
@@ -624,8 +624,9 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
       camera.aspect = w / h;
       // Fit about 4.5 units of card across the canvas, and keep it in frame vertically.
       const tan = Math.tan(MathUtils.degToRad(camera.fov / 2));
-      camera.position.z = Math.max(5.5 / camera.aspect / (2 * tan), 3.6 / (2 * tan));
-      frameY = camera.aspect < 1.4 ? 0.42 : 0.2;
+      // The standing card (4.4 tall) and its shadow fit the height; the opened stack fits the width.
+      camera.position.z = Math.max(4.85 / (2 * tan), 4.6 / camera.aspect / (2 * tan));
+      camera.position.y = -0.15;
       camera.updateProjectionMatrix();
       if (!state.running) api.renderOnce();
     },
@@ -643,6 +644,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
       layout(state.t, 0);
       renderer.render(scene, camera);
     },
+    info: () => ({ source: rig?.source, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, gl: renderer.getContext().getParameter(renderer.getContext().VERSION) }),
     dispose() {
       api.stop();
       scene.traverse((o) => {

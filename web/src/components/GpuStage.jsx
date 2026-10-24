@@ -28,6 +28,7 @@ export default function GpuStage({ progress = 0, load = 0.4 }) {
         s.renderOnce();
         return canvas.current.toDataURL('image/png');
       };
+      window.__gpuInfo = () => s.info();
     }
 
     const ro = new ResizeObserver(() => s.resize(el.clientWidth, el.clientHeight));
@@ -41,17 +42,11 @@ export default function GpuStage({ progress = 0, load = 0.4 }) {
     });
     io.observe(el);
     document.addEventListener('visibilitychange', sync);
-    const move = (e) => {
-      const r = el.getBoundingClientRect();
-      s.setPointer(((e.clientX - r.left) / r.width - 0.5) * 2, ((e.clientY - r.top) / r.height - 0.5) * 2);
-    };
-    window.addEventListener('pointermove', move, { passive: true });
     sync();
     return () => {
       ro.disconnect();
       io.disconnect();
       document.removeEventListener('visibilitychange', sync);
-      window.removeEventListener('pointermove', move);
       s.dispose();
       api.current = null;
     };

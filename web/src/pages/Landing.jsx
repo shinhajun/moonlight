@@ -1,11 +1,11 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, modelPath } from '../router.jsx';
 import { listOf, useApi, useEvents, usd, int, priceLabel, KINDS } from '../api.js';
 import { Badge, CopyBox, Icon, RollingNumber, useTween, BADGE_COPY } from '../components/ui.jsx';
 import { installCommand, detectOS } from './AddComputer.jsx';
 import { BASE } from '../snippets.js';
 
-const GpuStage = lazy(() => import('../components/GpuStage.jsx'));
+const GpuStage = memo(lazy(() => import('../components/GpuStage.jsx')));
 
 // WebGL only where it will be smooth: no reduced motion, real GPU, enough cores. ?gpu=3d|still overrides.
 function can3D() {
@@ -31,11 +31,12 @@ const smooth = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// Scroll progress through the sticky hero on wide screens; a slow loop on phones.
-function useHeroProgress(ref) {
+// Scroll progress through the pinned hero on wide screens with the 3D card; a slow loop otherwise
+// (phones, and the still image, which can't open with scroll anyway).
+function useHeroProgress(ref, pinned) {
   const [p, setP] = useState(0);
   useEffect(() => {
-    const wide = matchMedia('(min-width: 861px)');
+    const wide = matchMedia('(min-width: 1024px)');
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let loop = 0;
@@ -45,17 +46,18 @@ function useHeroProgress(ref) {
       raf = requestAnimationFrame(() => {
         const r = ref.current.getBoundingClientRect();
         const total = r.height - innerHeight;
-        setP(total > 0 ? Math.min(1, Math.max(0, -r.top / total)) : 0);
+        // Half-percent steps: React skips most scroll frames; the 3D scene eases between steps itself.
+        setP(total > 0 ? Math.round(Math.min(1, Math.max(0, -r.top / total)) * 200) / 200 : 0);
       });
     };
     const tick = (now) => {
-      setP((Math.sin((now - t0) / 2600 - Math.PI / 2) + 1) / 2);
+      setP(Math.round(((Math.sin((now - t0) / 2600 - Math.PI / 2) + 1) / 2) * 200) / 200);
       loop = requestAnimationFrame(tick);
     };
     const setup = () => {
       window.removeEventListener('scroll', onScroll);
       cancelAnimationFrame(loop);
-      if (wide.matches) {
+      if (wide.matches && pinned) {
         window.addEventListener('scroll', onScroll, { passive: true });
         onScroll();
       } else if (!reduced) {
@@ -71,7 +73,7 @@ function useHeroProgress(ref) {
       cancelAnimationFrame(raf);
       cancelAnimationFrame(loop);
     };
-  }, [ref]);
+  }, [ref, pinned]);
   return p;
 }
 
@@ -81,8 +83,8 @@ const STEPS = [
   ['You earn on every token.', '90% of each request is yours. Pause or reprice anytime.'],
 ];
 
-// An illustration, not live data: a 24 GB card shared by your apps and Moonlight.
-function VramCard({ share }) {
+// An illustration, not live data: a 24 GB card shared by your apps and Moonlight, as a slim strip under the GPU.
+const VramStrip = memo(function VramStrip({ share }) {
   const TOTAL = 24;
   const [apps, setApps] = useState(8.6);
   const [earned, setEarned] = useState(0);
@@ -107,12 +109,16 @@ function VramCard({ share }) {
   const pct = (gb) => `${(gb / TOTAL) * 100}%`;
   const shown = useTween(earned, 600);
   return (
-    <div className="vram-card">
-      <div className="vram-head">
+    <div className="vram-strip">
+      <div className="vs-top">
         <span className="vram-title">
           <Icon name="gpu" size={14} /> 24 GB GPU
         </span>
         <span className="tag">Illustration</span>
+        <span className="vs-earn">
+          <span className="label">Earned</span>
+          <RollingNumber value={usd(Math.round(shown), 6)} className="vs-money" />
+        </span>
       </div>
       <div className="vram-bar" role="img" aria-label={`Your apps ${apps.toFixed(1)} GB, Moonlight ${ml.toFixed(1)} GB, free ${free.toFixed(1)} GB`}>
         <span className="seg seg-apps" style={{ width: pct(apps) }} />
@@ -120,90 +126,48 @@ function VramCard({ share }) {
           {active && <i key={pulse} className="seg-pulse" />}
         </span>
       </div>
-      <dl className="vram-legend">
-        <div>
-          <dt>
-            <i className="dot dot-apps" />
-            Your apps
-          </dt>
-          <dd className="num">{apps.toFixed(1)} GB</dd>
-        </div>
-        <div>
-          <dt>
-            <i className="dot dot-ml" />
-            Moonlight
-          </dt>
-          <dd className="num">{ml.toFixed(1)} GB</dd>
-        </div>
-        <div>
-          <dt>
-            <i className="dot dot-free" />
-            Free
-          </dt>
-          <dd className="num">{free.toFixed(1)} GB</dd>
-        </div>
-      </dl>
-      <div className="vram-earn">
-        <div>
-          <span className="label">Earned</span>
-          <RollingNumber value={usd(Math.round(shown), 6)} className="vram-money" />
-        </div>
-        <div>
-          <span className="label">Requests</span>
-          <span className="num vram-served">{int(served)}</span>
-        </div>
+      <div className="vs-legend">
+        <span>
+          <i className="dot dot-apps" /> Your apps <b className="num">{apps.toFixed(1)} GB</b>
+        </span>
+        <span>
+          <i className="dot dot-ml" /> Moonlight <b className="num">{ml.toFixed(1)} GB</b>
+        </span>
+        <span>
+          <i className="dot dot-free" /> Free <b className="num">{free.toFixed(1)} GB</b>
+        </span>
+        <span className="vs-req num">{int(served)} req</span>
       </div>
     </div>
   );
-}
+});
 
 function Hero() {
   const ref = useRef(null);
-  const p = useHeroProgress(ref);
   const show3D = useMemo(can3D, []);
-  const explode = smooth(0.08, 0.72, p);
-  const share = smooth(0.3, 0.75, p);
-  const step = p < 0.33 ? 0 : p < 0.66 ? 1 : 2;
+  const p = useHeroProgress(ref, show3D);
+  const explode = smooth(0.06, 0.7, p);
+  const share = smooth(0.25, 0.75, p);
   return (
-    <section className="hero" ref={ref}>
+    <section className={`hero ${show3D ? 'pinned' : 'static'}`} ref={ref}>
       <div className="hero-sticky">
         <div className="hero-bg" aria-hidden>
-          <div className="hero-glow" style={{ opacity: 0.55 + share * 0.45 }} />
+          <div className="hero-glow" style={{ opacity: 0.6 + share * 0.4 }} />
         </div>
-        <div className="wrap hero-grid">
-          <div className="hero-copy">
-            <Link to="/trust" className="pill">
-              <Icon name="shield" size={14} /> Every seller is checked with hidden test jobs <Icon name="arrow" size={13} />
-            </Link>
-            <h1 className="hero-title">
-              Earn from your spare GPU.
-              <span>Use open models for less.</span>
-            </h1>
-            <p className="hero-sub">
-              Moonlight is a marketplace for idle VRAM. GPU owners rent out the room their own apps aren&apos;t using, even while they work. Developers get one OpenAI-compatible API to
-              open models on GPUs that already exist.
-            </p>
-            <div className="hero-cta">
-              <Link to="/add" className="btn btn-primary btn-lg">
-                Start earning <Icon name="arrow" />
-              </Link>
-              <Link to="/developers" className="btn btn-ghost btn-lg">
-                Use the API
-              </Link>
-            </div>
-            <ol className="hero-steps" aria-label="How it works">
-              {STEPS.map(([title, text], i) => (
-                <li key={title} className={i === step ? 'on' : i < step ? 'done' : ''}>
-                  <span className="step-n num">0{i + 1}</span>
-                  <div>
-                    <b>{title}</b>
-                    <p>{text}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+        <div className="wrap hero-v">
+          <Link to="/trust" className="pill hero-pill">
+            <Icon name="shield" size={14} /> Every seller is checked with hidden test jobs <Icon name="arrow" size={13} />
+          </Link>
+          <div className="hero-side hero-earn">
+            <h1 className="hero-half">Earn from your spare GPU.</h1>
+            <p>Moonlight rents out the VRAM your own apps aren&apos;t using, even while you work. You keep 90% of every request.</p>
           </div>
-          <div className="hero-visual">
+          <div className="hero-cta hero-cta-earn">
+            <Link to="/add" className="btn btn-primary btn-lg">
+              Start earning <Icon name="arrow" />
+            </Link>
+          </div>
+          <div className="hero-gpu">
             <div className="stage-wrap">
               {show3D ? (
                 <Suspense fallback={<Still />}>
@@ -213,13 +177,38 @@ function Hero() {
                 <Still />
               )}
             </div>
-            <VramCard share={share} />
           </div>
-        </div>
-        <div className="scroll-hint" style={{ opacity: 1 - smooth(0, 0.08, p) }} aria-hidden>
-          Scroll to open the card
+          <div className="hero-side hero-use">
+            <p className="hero-half">Use open models for less.</p>
+            <p>One OpenAI-compatible API to open models running on GPUs that already exist. Pay per token, nothing to provision.</p>
+          </div>
+          <div className="hero-cta hero-cta-use">
+            <Link to="/developers" className="btn btn-lg">
+              Use the API <Icon name="arrow" />
+            </Link>
+          </div>
+          <div className="hero-vram">
+            <VramStrip share={share} />
+          </div>
+          <p className="hero-line">The marketplace in between: idle VRAM on one side, open-model inference on the other.</p>
         </div>
       </div>
+    </section>
+  );
+}
+
+function Steps() {
+  return (
+    <section className="wrap steps-row" aria-label="How it works">
+      <ol>
+        {STEPS.map(([title, text], i) => (
+          <li key={title}>
+            <span className="step-n num">0{i + 1}</span>
+            <b>{title}</b>
+            <p>{text}</p>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -315,6 +304,7 @@ export default function Landing() {
   return (
     <main className="landing">
       <Hero />
+      <Steps />
       <NetworkStats />
 
       <section className="wrap halves">
