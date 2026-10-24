@@ -50,6 +50,7 @@ export function loadConfig(overrides = {}) {
     maxAttempts: 4,
     maxWaitS: 30, // queue wait when every seller is busy or offline; buyers may ask for up to maxWaitCapS
     maxWaitCapS: 120,
+    offlineGraceMs: 120_000, // a model whose seller left this recently still queues (it may reconnect); else 503 at once
     maxConcurrencyCap: 64,
     firstChunkTimeoutMs: num(env.MOONLIGHT_FIRST_CHUNK_MS, 60_000),
     idleTimeoutMs: 30_000,

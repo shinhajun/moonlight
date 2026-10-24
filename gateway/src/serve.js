@@ -90,17 +90,37 @@ export function suggestions(ctx, model) {
   return model.auto ? [...aliases, ...others] : [...others, ...aliases];
 }
 
-function noCapacity(ctx, model) {
-  const msg = `Every seller of \`${model.id}\` is busy or offline. Try again shortly or use one of the suggested models.`;
+// reason: 'no_sellers' (nobody connected could serve it; returned at once) or 'busy' (waited max_wait_s).
+function noCapacity(ctx, model, reason) {
+  const msg = reason === 'no_sellers'
+    ? `No seller is online for \`${model.id}\` right now. Try one of the suggested models.`
+    : `Every seller of \`${model.id}\` is busy. Try again shortly or use one of the suggested models.`;
   return new ApiError(503, 'server_error', 'no_capacity', msg, {
-    extra: { moonlight: { suggestions: suggestions(ctx, model) } },
+    extra: { moonlight: { reason, suggestions: suggestions(ctx, model) } },
     headers: { 'retry-after': '10' },
   });
+}
+
+// Could anyone serve this request soon: a connected seller (busy or not), or one that left within the grace
+// period and may reconnect? If not, there is no point queueing.
+function anySeller(ctx, r) {
+  if (eligible(ctx, r.model, { filters: r.filters, pin: r.pin, capacity: false }).length) return true;
+  const since = now() - ctx.config.offlineGraceMs;
+  for (const [lid, ts] of ctx.hub.recentlyOffline) {
+    if (ts < since) {
+      ctx.hub.recentlyOffline.delete(lid);
+      continue;
+    }
+    const l = ctx.store.listing(lid);
+    if (l && (r.model.auto ? AUTO_MODELS[r.model.id].match(l) : l.model_id === r.model.id)) return true;
+  }
+  return false;
 }
 
 // Next candidate, waiting in the model's fair queue if nobody has capacity. Queue time is counted, never billed.
 // Verification jobs yield: on a single-slot node they wait while any buyer is queued for that node's models.
 async function acquire(ctx, r, exclude) {
+  if (!anySeller(ctx, r)) throw noCapacity(ctx, r.model, 'no_sellers');
   const find = () => {
     const cand = rank(ctx, eligible(ctx, r.model, { filters: r.filters, pin: r.pin, exclude }))[0] || null;
     if (cand && r.verification && cand.conn.maxConcurrency === 1 && ctx.scheduler.buyersWaiting(cand.conn)) return null;
@@ -114,7 +134,7 @@ async function acquire(ctx, r, exclude) {
     r.queuedMs += queuedMs;
     return cand;
   } catch (err) {
-    if (err.code === 'no_capacity') throw noCapacity(ctx, r.model);
+    if (err.code === 'no_capacity') throw noCapacity(ctx, r.model, 'busy');
     throw err;
   }
 }

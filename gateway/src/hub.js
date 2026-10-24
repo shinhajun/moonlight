@@ -122,6 +122,7 @@ function digestAdvice(modelId, runtime) {
 export function createHub(ctx) {
   const { config, db, store, bus } = ctx;
   const conns = new Map(); // node_id -> conn (online only)
+  const recentlyOffline = new Map(); // listing_id -> when its node disconnected (they often reconnect)
   const sockets = new Set(); // every attached socket, for shutdown
   let pumpQueued = false;
 
@@ -272,6 +273,7 @@ export function createHub(ctx) {
     if (!conn.id || conns.get(conn.id) !== conn) return;
     conns.delete(conn.id);
     const t = now();
+    for (const lid of conn.listings.values()) recentlyOffline.set(lid, t);
     db.run('UPDATE nodes SET last_seen = ?, online_ms = online_ms + ? WHERE id = ?', t, t - conn.connectedAt, conn.id);
     log(`node ${conn.id} offline`);
     bus.publish('node', { ts: t, node_id: conn.id, node_name: conn.info.name, seller_id: conn.sellerId, online: false });
@@ -401,6 +403,7 @@ export function createHub(ctx) {
 
   const api = {
     conns,
+    recentlyOffline,
     attach,
     run,
     hasCapacity,
