@@ -283,13 +283,15 @@ The session cookie is `ml_session` (HttpOnly, SameSite=Lax).
 - `GET /api/me` → 401 when signed out. Otherwise one combined view:
   - `account:{id, email, name, handle, created_at}`
   - `balance_microusd`
-  - `keys:[{id, prefix, created_at, last_used}]`
+  - `keys:[key]`, where key = `{id, name, prefix, created_at, last_used, requests, spend_microusd}`. `requests` counts non-error requests made with the key, and `spend_microusd` is their total cost.
   - `requests:[{request_id, ts, model_id, kind, seller:{id, name}, node:{id, name}, verification, input_tokens, output_tokens, latency_ms, cost_microusd}]`
   - `earnings:{total, today, held}`
   - `jobs:[{job_id, ts, listing_id, model_id, kind, node_id, input_tokens, output_tokens, latency_ms, earned_microusd}]`
   - `verification_log:[{ts, listing_id, model_id, method:"canary"|"replay"|"peer"|"consistency", passed, metric:"agreement"|"max_dp"|"cosine"|"match", score, threshold, state_after}]`
-- `POST /api/me/keys {name?}` → `{key:{id, prefix, created_at}, secret:"ml_sk_…"}`. The secret is shown once.
-- `DELETE /api/me/keys/:id` → 204.
+- `POST /api/me/keys {name?}` → 201 `{key, secret:"ml_sk_…"}`. The secret is shown once. At 20 keys it returns 409 `{error:{code:"too_many_keys", message}}`.
+- `PATCH /api/me/keys/:id {name}` → 200 `{key}`. Names are trimmed, capped at 60 characters, and empty becomes null.
+- `DELETE /api/me/keys/:id` → 204. The key stops working immediately: the next `/v1/*` call returns 401.
+- PATCH or DELETE on another account's key, or an unknown id → 404 `{error:{code:"not_found"}}`. Both cases return the same response, so ids don't leak.
 
 ### Pairing
 - `GET /api/devices/:code` → `{pair_code, status:"pending"|"approved"|"expired", expires_at, node:{name, os, arch, cpu, ram_gb, gpu, vram_gb}}`.
