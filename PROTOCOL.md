@@ -1,4 +1,4 @@
-# Moonlight protocol (v0.3)
+# Moonlight protocol (v0.4)
 
 Moonlight lets anyone sell the models running on their own computer. Buyers call one API. The gateway routes each call to a seller's machine, meters it, pays the seller, and checks that the seller really runs the model they listed.
 
@@ -329,3 +329,36 @@ Named events, e.g. `event: request\ndata: {...}`:
 
 ### Static
 The web uses path routes, e.g. `/models/qwen3.5:35b-a3b`, `/me/sell`, `/pair/ABCD-1234`, `/chat`. The gateway serves `index.html` (SPA fallback) for any GET outside `/api`, `/v1`, `/agent`, `/agent.mjs`, `/install.*`, and `/dl`.
+
+## Google sign-in (v0.4)
+
+Google sign-in goes through Firebase Auth in GCP project `vada-so`. Its Google provider is already enabled, and `moonlight.hajunshin.com` is an authorized domain (added 2026-10-25).
+
+- **Web:**
+  1. Lazy-load the Firebase modular SDK (`firebase/app` + `firebase/auth` only) on the login page.
+  2. Call `signInWithPopup(GoogleAuthProvider)` (fall back to redirect on mobile or when popups are blocked).
+  3. Take `user.getIdToken()` and send it to `POST /api/auth/google {id_token}`.
+
+  The Firebase web config holds public client values. It's in the vault note `resources/credentials/자격증명 (Credentials).md` under "Firebase (vada-so) - 테스트용 › Web App 설정". Copy the needed fields into `web/src/firebase.js`.
+- **Gateway: `POST /api/auth/google {id_token}`.** It verifies the Firebase ID token itself, with no SDK:
+  - The signature is RS256 against `https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com`, keyed by `kid` and cached per `Cache-Control: max-age`.
+  - Required claims:
+    - `aud` = `vada-so`
+    - `iss` = `https://securetoken.google.com/vada-so`
+    - `exp` in the future, `iat` and `auth_time` in the past
+    - `sub` non-empty
+    - `email_verified` = true
+    - `firebase.sign_in_provider` = `google.com`
+- **Account resolution:**
+  1. An existing `google_sub` signs into that account.
+  2. Otherwise, an existing account with the same verified email gets `google_sub` linked.
+  3. Otherwise, a new account is created (name from the token, password null).
+
+  The response is the same as login (`{account}`, plus `demo_credit_microusd` and `notice?` when the account is new) and sets the `ml_session` cookie. The same per-IP limits and once-a-day demo credit apply.
+- **Signed-out behavior:** No page embeds an auth form. Pages that need an account redirect to `/login?next=<path>`, and login returns there afterwards:
+  - `/me/*`
+  - `/developers` key actions
+  - `/pair/:code`, which keeps the code
+  - sending a chat message
+
+  `/chat` signed out keeps its normal empty state and model picker. Its composer is replaced by a single "Sign in to chat" call to action that links to `/login?next=/chat`.
