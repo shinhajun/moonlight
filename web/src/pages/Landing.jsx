@@ -92,23 +92,41 @@ function useHeroProgress(ref, pinned) {
   return progress;
 }
 
-// Where the 3D card may go, as fractions of the pinned screen: the middle column while closed (rest), and the
-// space the side story leaves while open. Both are laid out by CSS; the scene fits the card inside them.
+// Where the 3D card may go, as fractions of the pinned screen: the middle column while closed (rest), the
+// story's area while open, and, beside the card, the side text it must stay 16px clear of (avoid). All are laid
+// out by CSS; the scene fits the card inside them.
+const CLEAR = 16;
 function useRooms(ref, restRef, openRef, on) {
   const [room, setRoom] = useState(null);
   useEffect(() => {
     if (!on) return;
     const sticky = ref.current.firstElementChild;
+    const story = openRef.current.parentElement;
+    const wide = matchMedia('(min-width: 1024px)');
     const measure = () => {
       const s = sticky.getBoundingClientRect();
       const frac = (el) => {
         const r = el.getBoundingClientRect();
         return { x: (r.left - s.left) / s.width, y: (r.top - s.top) / s.height, w: r.width / s.width, h: r.height / s.height };
       };
-      setRoom({ rest: frac(restRef.current), open: frac(openRef.current) });
+      // Every beat's block on a side shares one cell: avoid their union, measured without the slide-in offset.
+      const side = (sel) => {
+        let x0 = Infinity;
+        let y0 = Infinity;
+        let x1 = -Infinity;
+        let y1 = -Infinity;
+        story.querySelectorAll(sel).forEach((b) => {
+          x0 = Math.min(x0, story.offsetLeft + b.offsetLeft);
+          y0 = Math.min(y0, story.offsetTop + b.offsetTop);
+          x1 = Math.max(x1, story.offsetLeft + b.offsetLeft + b.offsetWidth);
+          y1 = Math.max(y1, story.offsetTop + b.offsetTop + b.offsetHeight);
+        });
+        return { x: (x0 - CLEAR) / s.width, y: (y0 - CLEAR) / s.height, w: (x1 - x0 + 2 * CLEAR) / s.width, h: (y1 - y0 + 2 * CLEAR) / s.height };
+      };
+      setRoom({ rest: frac(restRef.current), open: frac(openRef.current), avoid: wide.matches ? [side('.beat-earn'), side('.beat-use')] : [] });
     };
     const ro = new ResizeObserver(measure);
-    [sticky, restRef.current, openRef.current].forEach((el) => ro.observe(el));
+    [sticky, restRef.current, openRef.current, ...story.querySelectorAll('.beat-side')].forEach((el) => ro.observe(el));
     return () => ro.disconnect();
   }, [ref, restRef, openRef, on]);
   return room;

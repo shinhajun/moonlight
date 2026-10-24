@@ -379,7 +379,7 @@ function buildGpu() {
   const move = (obj, layer, x, y, z) => ({ obj, layer, base: obj.position.clone(), delta: new Vector3(x, y, z) });
   return {
     object: gpu,
-    moves: [move(bracket, 'bracket', -0.6, 0, 0), move(back, 'back', 0, 0, -0.95), move(sink, 'sink', 0, 0, 1.0), move(shroud, 'shroud', 0, 0, 1.9), ...fans.map((f) => move(f, 'fans', 0, 0, 2.7))],
+    moves: [move(bracket, 'bracket', -0.6, 0, 0), move(back, 'back', 0, 0, -0.5), move(sink, 'sink', 0, 0, 1.6), move(shroud, 'shroud', 0, 0, 2.0), ...fans.map((f) => move(f, 'fans', 0, 0, 2.3))],
     rotors: fans.map((f) => f.userData.rotor),
     spin: -1,
     chips: chips.map((mat, i) => ({ mats: [mat], glow: chipGlows[i] })),
@@ -392,11 +392,12 @@ function buildGpu() {
 // ---------------------------------------------------------------- the Blender model
 
 // How far each named layer travels when the card opens, in card units (the card is 4.4 long), and its beat.
+// The heatsink clears the PCB so the VRAM shows; the shroud and fans sit just outside each other's walls.
 const EXPLODE = [
-  [['fan_0', 'fan_1', 'fan_2', 'fan_frame'], [0, 0, 2.7], 'fans'],
-  [['shroud'], [0, 0, 1.9], 'shroud'],
-  [['heatsink_fins', 'heatpipes'], [0, 0, 1.0], 'sink'],
-  [['backplate'], [0, 0, -0.95], 'back'],
+  [['fan_0', 'fan_1', 'fan_2', 'fan_frame'], [0, 0, 2.3], 'fans'],
+  [['shroud'], [0, 0, 2.0], 'shroud'],
+  [['heatsink_fins', 'heatpipes'], [0, 0, 1.6], 'sink'],
+  [['backplate'], [0, 0, -0.5], 'back'],
   [['io_bracket'], [-0.6, 0, 0], 'bracket'],
 ];
 
@@ -437,7 +438,7 @@ function rigFromGltf(model) {
   const pcbZ = named('pcb') ? centerOf(named('pcb')).z : 0;
   prefixed('accent_').forEach((o) => {
     for (let p = o; p; p = p.parent) if (want.has(p)) return;
-    want.set(o, centerOf(o).z >= pcbZ ? { d: new Vector3(0, 0, 1.9), layer: 'shroud' } : { d: new Vector3(0, 0, -0.95), layer: 'back' });
+    want.set(o, centerOf(o).z >= pcbZ ? { d: new Vector3(0, 0, 2.0), layer: 'shroud' } : { d: new Vector3(0, 0, -0.5), layer: 'back' });
   });
   const moves = [];
   for (const [o, { d, layer }] of want) {
@@ -543,7 +544,10 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   kick.position.set(-6, 1.5, -2);
   const fill = new DirectionalLight('#dfe3ea', 0.45);
   fill.position.set(-3, -2, 4);
-  scene.add(key, rim, kick, fill);
+  // Turned, the fans face left, away from the key: a soft front-left light keeps them reading.
+  const side = new DirectionalLight('#e6eaf0', 0.9);
+  side.position.set(-6, 3, 5);
+  scene.add(key, rim, kick, fill, side);
 
   // Contact shadow: a wide soft layer and a tight dark core under the card.
   const shadowTex = shadowTexture();
@@ -629,7 +633,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
       }
     }
     const k = copyOut(t);
-    const { rest: r, open: o } = state.room;
+    const { rest: r, open: o, avoid } = state.room;
     const w = MathUtils.lerp(r.w, o.w, k);
     const h = MathUtils.lerp(r.h, o.h, k);
     const ox = (MathUtils.lerp(r.x, o.x, k) + w / 2) * 2 - 1;
@@ -640,6 +644,36 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     const cy = (y0 + y1) / 2;
     let d = 0;
     for (let i = 0; i < n; i += 3) d = Math.max(d, pts[i + 2] + Math.abs(pts[i] - cx) / (tanX * w), pts[i + 2] + Math.abs(pts[i + 1] - cy) / (tanY * h));
+    // Then, once the side text is in, back off just enough that no layer's box touches it.
+    const hits = (dist) => {
+      for (let p = 0; p < n; p += 24) {
+        let a0 = Infinity;
+        let a1 = -Infinity;
+        let b0 = Infinity;
+        let b1 = -Infinity;
+        for (let i = p; i < p + 24; i += 3) {
+          const s = 1 / (dist - pts[i + 2]);
+          const x = (1 + ox + (pts[i] - cx) * s / tanX) / 2;
+          const y = (1 - oy - (pts[i + 1] - cy) * s / tanY) / 2;
+          a0 = Math.min(a0, x);
+          a1 = Math.max(a1, x);
+          b0 = Math.min(b0, y);
+          b1 = Math.max(b1, y);
+        }
+        for (const q of avoid) if (a0 < q.x + q.w && a1 > q.x && b0 < q.y + q.h && b1 > q.y) return true;
+      }
+      return false;
+    };
+    if (k > 0 && avoid?.length && hits(d)) {
+      let lo = d;
+      let hi = d * 4;
+      for (let i = 0; i < 18; i++) {
+        const mid = (lo + hi) / 2;
+        if (hits(mid)) lo = mid;
+        else hi = mid;
+      }
+      d = hi;
+    }
     camera.position.set(cx, cy, d);
     // Lens shift: the card's center lands on the room's center without turning the camera. setViewOffset also
     // sets the aspect from the full size, so the full size keeps the canvas's aspect.
@@ -669,10 +703,13 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     });
     if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.62, 0.85, t);
     if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.62, 0.85, t) * glowScale;
-    // About 15° of yaw at rest, turning to 60° with a little more tilt as it opens.
+    // About 15° of yaw at rest, turning to 43° and tilting toward the viewer as it opens: the layers separate
+    // mostly in depth, so the opened card stays narrow enough to be big between the side texts. The lens
+    // narrows at the same time (the fit keeps the size), so the front layers don't swell and turn edge-on.
     const k = smooth(TURN[0], TURN[1], t);
-    const yaw = MathUtils.lerp(-0.26, -1.05, k);
-    const pitch = MathUtils.lerp(0.05, 0.2, k);
+    const yaw = MathUtils.lerp(-0.26, -0.75, k);
+    const pitch = MathUtils.lerp(0.05, 0.35, k);
+    camera.fov = MathUtils.lerp(30, 20, k);
     root.rotation.set(pitch, yaw + idle * Math.sin(time * 0.3) * 0.07, 0);
     root.position.y = idle * Math.sin(time * 0.6) * 0.03;
     fit(t, pitch, yaw);

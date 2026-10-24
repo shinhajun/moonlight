@@ -215,10 +215,8 @@
   pointer-events: none;
 }
 .story-room {
-  grid-area: room;
+  grid-area: 1 / 1 / 2 / -1;
   height: 92%;
-  /* Part of the column gaps too, keeping 16px clear of the text. */
-  margin-inline: calc(16px - var(--s-5));
 }
 .beat {
   display: contents;
@@ -234,12 +232,16 @@
 }
 .hero-story .beat-earn {
   grid-area: earn;
+  align-self: start;
+  margin-top: 9vh;
   justify-items: end;
   text-align: right;
   translate: calc((1 - var(--o)) * -32px) 0;
 }
 .hero-story .beat-use {
   grid-area: use;
+  align-self: end;
+  margin-bottom: 9vh;
   justify-items: start;
   translate: calc((1 - var(--o)) * 32px) 0;
 }
@@ -316,6 +318,16 @@
   color: var(--fg-3);
 }
 
+/* Wide screens: the text columns stop growing and the middle grows with the screen's height instead, so the
+   opened card (which is about as wide as it is tall once open) stays big on large monitors. */
+@media (min-width: 1600px) {
+  .hero-v,
+  .hero-story {
+    max-width: calc(2 * 360px + 2 * var(--s-5) + 2 * var(--gutter) + 0.62 * (100vh - var(--nav-h)));
+    grid-template-columns: 360px minmax(0, 1fr) 360px;
+  }
+}
+
 /* Below 1024: the two headlines, the standing GPU, then both CTAs; two screens of scroll instead of three. */
 @media (max-width: 1023px) {
   .hero.pinned {
@@ -373,8 +385,8 @@
     align-items: end;
   }
   .story-room {
+    grid-area: room;
     height: 100%;
-    margin-inline: 0;
   }
   .hero-story .beat-earn,
   .hero-story .beat-use {
@@ -384,6 +396,7 @@
   }
   .hero-story .beat-side {
     align-self: start;
+    margin-block: 0;
     gap: 4px;
   }
   .hero-story .beat-title {
