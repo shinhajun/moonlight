@@ -1,0 +1,91 @@
+{
+  "voice": { "id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "model": "eleven_multilingual_v2" },
+  "note": "Each clip is one TTS call. A phrase is one caption cue: `show` is the caption text, `say` (if different) is what the voice reads.",
+  "clips": [
+    { "id": "s1", "phrases": [
+      { "show": "This is a graphics card." },
+      { "show": "Most of the time, a lot of its memory sits unused." }
+    ]},
+    { "id": "s2", "phrases": [
+      { "show": "Meanwhile, developers want open models" },
+      { "show": "without renting and running a server." },
+      { "show": "Moonlight connects the two." },
+      { "show": "Earn from your spare GPU." },
+      { "show": "Use open models for less." }
+    ]},
+    { "id": "s3", "phrases": [
+      { "show": "Sellers run one small agent." },
+      { "show": "It finds the open models they already have," },
+      { "show": "in Ollama, LM Studio, llama.cpp or vLLM,", "say": "in Ollama, LM Studio, llama dot C P P, or V L L M," },
+      { "show": "and serves them in the VRAM their own apps aren't using.", "say": "and serves them in the V-RAM their own apps aren't using." },
+      { "show": "Buyers get one OpenAI-compatible API," },
+      { "show": "and pay only for the tokens they use." }
+    ]},
+    { "id": "s4a", "phrases": [
+      { "show": "Here's a seller joining." },
+      { "show": "One line installs the agent." }
+    ]},
+    { "id": "s4b", "phrases": [
+      { "show": "Run moonlight.", "say": "Run Moonlight." },
+      { "show": "It lists the models on this machine" },
+      { "show": "and prints a pairing code." }
+    ]},
+    { "id": "s4c", "phrases": [
+      { "show": "Approve the computer in the browser, and you're selling." },
+      { "show": "No keys to copy, no ports to open." }
+    ]},
+    { "id": "s4d", "phrases": [
+      { "show": "The terminal becomes a live dashboard:" },
+      { "show": "each model's status, jobs served, earnings," },
+      { "show": "and how the GPU memory splits" },
+      { "show": "between your apps, Moonlight, and what's spare." },
+      { "show": "And when your own apps need the GPU," },
+      { "show": "Moonlight pauses, finishes what it's doing, and steps aside." }
+    ]},
+    { "id": "s4e", "phrases": [
+      { "show": "On the web, the same computer shows its VRAM bar and earnings.", "say": "On the web, the same computer shows its V-RAM bar and earnings." },
+      { "show": "Sellers keep 90% of every request,", "say": "Sellers keep ninety percent of every request," },
+      { "show": "at the price they set." }
+    ]},
+    { "id": "s5a", "phrases": [
+      { "show": "Now the buyer." },
+      { "show": "In Chat, pick “Any small model” and ask anything.", "say": "In Chat, pick “Any small model,” and ask anything." }
+    ]},
+    { "id": "s5b", "phrases": [
+      { "show": "The answer streams from a seller's GPU," },
+      { "show": "and the receipt shows which GPU served it," },
+      { "show": "what it cost, and that it's verified." }
+    ]},
+    { "id": "s5c", "phrases": [
+      { "show": "For your own code, create an API key." },
+      { "show": "Point the OpenAI SDK at Moonlight's base URL," },
+      { "show": "and that's the whole integration." }
+    ]},
+    { "id": "s5d", "phrases": [
+      { "show": "Or let Moonlight pick:" },
+      { "show": "auto/chat-small routes to the best available GPU.", "say": "auto slash chat small routes to the best available GPU." }
+    ]},
+    { "id": "s6a", "phrases": [
+      { "show": "But how do you know a seller runs the model they listed?" }
+    ]},
+    { "id": "s6b", "phrases": [
+      { "show": "Moonlight hides canary jobs among real requests." },
+      { "show": "At eight points in a reference answer," },
+      { "show": "the seller's next three words have to match" },
+      { "show": "what a trusted reference GPU says." }
+    ]},
+    { "id": "s6c", "phrases": [
+      { "show": "This seller lists Qwen 2.5 1.5B", "say": "This seller lists Qwen two point five, one point five B," },
+      { "show": "but secretly serves the 0.5B.", "say": "but secretly serves the zero point five B." }
+    ]},
+    { "id": "s6d", "phrases": [
+      { "show": "A few checks later, it's flagged," },
+      { "show": "taken off the market, and its earnings are held." }
+    ]},
+    { "id": "s7", "phrases": [
+      { "show": "Moonlight." },
+      { "show": "Earn from your spare GPU." },
+      { "show": "Use open models for less." }
+    ]}
+  ]
+}

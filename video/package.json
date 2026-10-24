@@ -1,0 +1,27 @@
+{
+  "name": "moonlight-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render MoonlightDemo out/moonlight-demo.mp4",
+    "still": "remotion still Thumbnail out/moonlight-thumbnail.png"
+  },
+  "dependencies": {
+    "@remotion/captions": "4.0.538",
+    "@remotion/cli": "4.0.538",
+    "@remotion/google-fonts": "4.0.538",
+    "@remotion/media": "4.0.538",
+    "@remotion/media-utils": "4.0.538",
+    "@remotion/transitions": "4.0.538",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.538"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@xterm/headless": "5.5.0",
+    "playwright-core": "1.64.1",
+    "typescript": "5.9.3"
+  }
+}
