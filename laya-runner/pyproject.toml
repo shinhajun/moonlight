@@ -1,0 +1,17 @@
+[project]
+name = "laya-runner"
+version = "0.1.0"
+description = "Serves the open Laya decision model on a Jev-compatible /v1/systemone endpoint for Moonlight sellers"
+requires-python = ">=3.10"
+dependencies = [
+    "laya>=0.4.14",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+
+[project.scripts]
+laya-runner = "laya_runner.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
