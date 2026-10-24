@@ -92,6 +92,13 @@ const KINDS = new Set(['chat', 'embedding', 'decision']);
 const str = (v, max = 80) => (typeof v === 'string' ? v.slice(0, max) : v == null ? null : String(v).slice(0, max));
 const nonNeg = (v) => (Number.isFinite(v) && v >= 0 ? v : null);
 const posInt = (v) => (Number.isInteger(v) && v > 0 ? v : null);
+const gb = (v) => (Number.isFinite(v) && v >= 0 ? Math.round(v * 10) / 10 : null);
+
+// status.vram: {total_gb, free_gb, moonlight_gb, others_gb, budget_gb}, each a number or null.
+function cleanVram(v) {
+  if (!v || typeof v !== 'object') return null;
+  return { total_gb: gb(v.total_gb), free_gb: gb(v.free_gb), moonlight_gb: gb(v.moonlight_gb), others_gb: gb(v.others_gb), budget_gb: gb(v.budget_gb) };
+}
 
 export function sanitizePrice(p, cap) {
   const out = {};
@@ -224,6 +231,7 @@ export function createHub(ctx) {
     const info = {
       name: str(n.name) || 'node', os: str(n.os, 40), arch: str(n.arch, 20), cpu: str(n.cpu),
       ram_gb: nonNeg(n.ram_gb), gpu: str(n.gpu), vram_gb: nonNeg(n.vram_gb),
+      vram_budget_gb: gb(n.vram_budget_gb), vram_free_gb: gb(n.vram_free_gb),
     };
     if (typeof msg.token === 'string' && msg.token.startsWith('ml_nt_')) {
       node = store.nodeByToken(msg.token);
@@ -256,13 +264,14 @@ export function createHub(ctx) {
     Object.assign(conn, {
       id: node.id, sellerId: seller.id, seller, trusted: !!seller.trusted, info, connectedAt: t,
       maxConcurrency: Math.min(posInt(n.max_concurrency) || 1, config.maxConcurrencyCap),
+      vram: { total_gb: info.vram_gb, free_gb: info.vram_free_gb, moonlight_gb: null, others_gb: null, budget_gb: info.vram_budget_gb },
     });
     const listings = await applyModels(conn, msg.models);
     if (!listings) return;
     conns.set(node.id, conn);
     conn.send({ t: 'welcome', node_id: node.id, seller_id: seller.id, listings });
     log(`node ${node.id} online (${seller.handle}${conn.trusted ? ', trusted' : ''}, x${conn.maxConcurrency}): ${listings.map((l) => `${l.model_id}=${l.reason || l.status}`).join(' ')}`);
-    bus.publish('node', { ts: t, node_id: node.id, node_name: info.name, seller_id: seller.id, online: true });
+    publishNode(conn, true);
     pushStats(conn);
     capacityChanged();
   }
@@ -276,7 +285,15 @@ export function createHub(ctx) {
     for (const lid of conn.listings.values()) recentlyOffline.set(lid, t);
     db.run('UPDATE nodes SET last_seen = ?, online_ms = online_ms + ? WHERE id = ?', t, t - conn.connectedAt, conn.id);
     log(`node ${conn.id} offline`);
-    bus.publish('node', { ts: t, node_id: conn.id, node_name: conn.info.name, seller_id: conn.sellerId, online: false });
+    publishNode(conn, false);
+  }
+
+  // SSE `node`: connection plus pause state and memory, so dashboards can show "Owner is using their computer".
+  function publishNode(conn, online) {
+    bus.publish('node', {
+      ts: now(), node_id: conn.id, node_name: conn.info.name, seller_id: conn.sellerId, online,
+      paused: online && conn.paused, reason: online ? conn.pauseReason : null, vram: online ? conn.vram : null,
+    });
   }
 
   async function onFrame(conn, msg) {
@@ -295,10 +312,17 @@ export function createHub(ctx) {
       case 'error':
         job?.fail(new JobError('agent_error', `${str(msg.code, 40)}: ${str(msg.message, 200)}`));
         break;
-      case 'status':
-        conn.paused = !!msg.paused;
+      case 'status': {
+        // Paused (manually or because the owner needs the GPU) gets no jobs. owner_busy is neither offline nor a failure.
+        const paused = !!msg.paused;
+        const reason = paused ? (msg.reason === 'owner_busy' ? 'owner_busy' : 'manual') : null;
+        const vram = cleanVram(msg.vram) || conn.vram;
+        const changed = paused !== conn.paused || reason !== conn.pauseReason || JSON.stringify(vram) !== JSON.stringify(conn.vram);
+        Object.assign(conn, { paused, pauseReason: reason, vram });
+        if (changed) publishNode(conn, true);
         capacityChanged();
         break;
+      }
       case 'drain':
         // Graceful shutdown: no new jobs; in-flight ones finish, then the agent disconnects.
         conn.draining = true;
@@ -317,7 +341,8 @@ export function createHub(ctx) {
 
   function attach(ws) {
     const conn = {
-      ws, id: null, inflight: new Map(), reserved: 0, listings: new Map(), paused: false, draining: false, lastFrame: now(), maxConcurrency: 1,
+      ws, id: null, inflight: new Map(), reserved: 0, listings: new Map(), paused: false, pauseReason: null, vram: null, draining: false,
+      lastFrame: now(), maxConcurrency: 1,
       send: (m) => ws.readyState === 1 && ws.send(JSON.stringify(m)),
     };
     conn.pingTimer = setInterval(() => {

@@ -151,7 +151,7 @@ test('catalog, stats and the SSE event feed', async (t) => {
   await waitFor(() => events.some((e) => e.type === 'request') && events.some((e) => e.type === 'earning'));
 
   const node = events.find((e) => e.type === 'node').data;
-  assert.deepEqual(Object.keys(node), ['ts', 'node_id', 'node_name', 'seller_id', 'online']);
+  assert.deepEqual(Object.keys(node), ['ts', 'node_id', 'node_name', 'seller_id', 'online', 'paused', 'reason', 'vram']);
   const req = events.find((e) => e.type === 'request').data;
   assert.deepEqual(Object.keys(req), ['ts', 'model_id', 'kind', 'seller_id', 'seller_name', 'node_id', 'node_name', 'cost_microusd', 'latency_ms']);
   assert.equal(req.node_id, a.nodeId);

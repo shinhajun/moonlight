@@ -105,6 +105,12 @@ function noCapacity(ctx, model, reason) {
 // period and may reconnect? If not, there is no point queueing.
 function anySeller(ctx, r) {
   if (eligible(ctx, r.model, { filters: r.filters, pin: r.pin, capacity: false }).length) return true;
+  // A seller whose owner is using the GPU will be back; one paused by hand may not.
+  for (const c of ctx.hub.conns.values()) {
+    if (c.pauseReason !== 'owner_busy') continue;
+    const ids = r.model.auto ? [...c.listings.values()] : [c.listings.get(r.model.id)].filter(Boolean);
+    if (ids.some((lid) => !r.model.auto || AUTO_MODELS[r.model.id].match(ctx.store.listing(lid)))) return true;
+  }
   const since = now() - ctx.config.offlineGraceMs;
   for (const [lid, ts] of ctx.hub.recentlyOffline) {
     if (ts < since) {
