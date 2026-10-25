@@ -67,9 +67,10 @@ function Agreement() {
           Honest seller
         </button>
         <button type="button" className="chip" role="radio" aria-checked={who === 'cheat'} aria-pressed={who === 'cheat'} onClick={() => setWho('cheat')}>
-          Cheater: smaller model, same label
+          Cheating seller
         </button>
       </div>
+      <p className="small muted">{who === 'honest' ? 'Runs the AI it advertises.' : 'Advertises a big AI, but secretly runs a cheaper one.'}</p>
       <p className="agree-prompt">
         <span className="label">Test job</span> Why does bread dough rise?
       </p>
@@ -91,7 +92,7 @@ function Agreement() {
   );
 }
 
-// Measured agreement scores as bars on a 0–1 scale, with the 5-of-8 pass line.
+// Measured agreement scores as bars on a 0–100% scale, with the 5-of-8 pass line.
 function Measured() {
   const pos = (v) => `${v * 100}%`;
   return (
@@ -104,16 +105,16 @@ function Measured() {
             <span className="m-fill" style={{ width: pos(v) }} />
             <span className="m-pass" style={{ left: pos(PASS) }} aria-hidden />
           </span>
-          <b className="num">{v.toFixed(2)}</b>
+          <b className="num">{Math.round(v * 100)}%</b>
         </div>
       ))}
       <div className="m-row m-scale num" aria-hidden>
         <span className="m-track">
-          <span style={{ left: 0 }}>0</span>
+          <span style={{ left: 0 }}>0%</span>
           <span className="m-pass-label" style={{ left: pos(PASS) }}>
-            pass {PASS}
+            pass mark
           </span>
-          <span style={{ left: '100%' }}>1.0</span>
+          <span style={{ left: '100%' }}>100%</span>
         </span>
       </div>
     </figure>
@@ -153,7 +154,7 @@ export default function Trust() {
       <header className="page-head trust-head">
         <p className="eyebrow">Verification</p>
         <h1 className="h1">How we know a seller runs what they list.</h1>
-        <p className="lede">Anyone can claim their GPU runs a big model. So we check, quietly and often, with test jobs no seller can tell apart from real ones.</p>
+        <p className="lede">Anyone can say their computer runs a powerful AI. So we keep testing every seller with secret questions that look exactly like real ones. They never know which is which.</p>
       </header>
 
       <section className="glance" aria-label="Badges">

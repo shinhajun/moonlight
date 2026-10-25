@@ -689,11 +689,49 @@
 .msg-slip {
   max-width: 85%;
   padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px 14px 4px 14px;
-  background: var(--bg-2);
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--line));
+  border-radius: 16px 16px 4px 16px;
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%), var(--bg-2);
+  box-shadow: var(--highlight);
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* Copy, edit, regenerate: shown on hover, always on the latest answer and on touch screens. */
+.msg-acts {
+  display: flex;
+  gap: 2px;
+  margin-top: -6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.msg:hover .msg-acts,
+.msg-acts:focus-within,
+.msg-acts.on {
+  opacity: 1;
+}
+@media (hover: none) {
+  .msg-acts {
+    opacity: 1;
+  }
+}
+.msg-act {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, transform 0.15s;
+}
+.msg-act:hover {
+  color: var(--fg);
+  background: color-mix(in oklch, var(--fg) 8%, transparent);
+}
+.msg-act:active {
+  transform: scale(0.9);
 }
 .msg-bot {
   justify-items: stretch;
@@ -710,13 +748,44 @@
   padding-left: 1.3em;
 }
 .md-code {
-  margin: 0;
-  padding: 14px 16px;
-  overflow-x: auto;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--code-bg);
   color: var(--code-fg);
+}
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 14px;
+  border-bottom: 1px solid oklch(1 0 0 / 0.07);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: oklch(0.72 0.01 265);
+}
+.md-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.md-code-copy:hover {
+  background: oklch(1 0 0 / 0.08);
+  color: oklch(0.92 0.006 265);
+}
+.md-code pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
   font-size: 0.84rem;
   line-height: 1.6;
 }
@@ -871,6 +940,22 @@
   background: var(--accent);
   animation: pulse 1.4s infinite;
 }
+/* A light sweep across "Thinking…". */
+.reasoning.active .reasoning-toggle {
+  background: linear-gradient(90deg, var(--fg-3) 0 40%, var(--fg) 50%, var(--fg-3) 60% 100%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 1.8s linear infinite;
+}
+@keyframes sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
 .reasoning-text {
   padding-left: 12px;
   border-left: 2px solid var(--line-2);
@@ -935,8 +1020,42 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .composer:focus-within {
-  border-color: color-mix(in oklch, var(--accent) 60%, transparent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: transparent;
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 12px 40px -16px var(--accent-glow);
+}
+/* Gradient ring: on focus it sits still, while an answer streams it turns. */
+@property --ring {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.composer::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--ring), var(--accent), var(--aura-2), var(--aura-3), var(--accent));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.composer:focus-within::before,
+.composer.is-busy::before {
+  opacity: 1;
+}
+.composer.is-busy::before {
+  animation: ring 2.4s linear infinite;
+}
+@keyframes ring {
+  to {
+    --ring: 360deg;
+  }
 }
 .composer-input {
   flex: 1;
@@ -963,6 +1082,12 @@
   cursor: pointer;
   transition: opacity 0.15s, transform 0.15s;
 }
+.composer-btn:not(:disabled) {
+  box-shadow: 0 6px 18px -6px var(--accent-glow);
+}
+.composer-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
 .composer-btn:disabled {
   opacity: 0.35;
   cursor: default;
@@ -972,6 +1097,7 @@
 }
 .composer-btn.stop {
   background: var(--fg);
+  box-shadow: none;
 }
 .stop-square {
   width: 11px;
@@ -1054,6 +1180,56 @@
 .chat-list li.on {
   background: color-mix(in oklch, var(--fg) 7%, transparent);
 }
+.chat-list li.on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  animation: page-in 0.3s var(--ease-out);
+}
+.chat-group {
+  display: grid;
+  gap: 4px;
+}
+.chat-group-label {
+  padding: 6px 10px 0;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--fg-3);
+}
+.chat-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--fg) 3%, transparent);
+  color: var(--fg-3);
+  transition: border-color 0.15s;
+}
+.chat-search:focus-within {
+  border-color: color-mix(in oklch, var(--accent) 50%, transparent);
+}
+.chat-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--fg);
+  outline: none;
+}
+.chat-none {
+  padding: 0 10px;
+}
 .chat-item {
   display: grid;
   gap: 2px;
@@ -1067,6 +1243,9 @@
 }
 .chat-item:hover {
   background: color-mix(in oklch, var(--fg) 4%, transparent);
+}
+.chat-item {
+  transition: background-color 0.15s;
 }
 .chat-item-title {
   overflow: hidden;
@@ -1121,6 +1300,7 @@
 .chat-scroll {
   overflow-y: auto;
   padding: var(--s-6) var(--s-5) var(--s-4);
+  mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 32px), transparent);
 }
 .chat-col {
   display: grid;
@@ -1129,19 +1309,133 @@
   margin-inline: auto;
 }
 .chat-foot {
+  position: relative;
   padding: var(--s-3) var(--s-5) var(--s-4);
+}
+.to-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  translate: -50% 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--glass-pop);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  cursor: pointer;
+  animation: pop-in 0.2s var(--ease-out);
+  transition: transform 0.15s;
+}
+.to-bottom:hover {
+  transform: translateY(2px);
 }
 .chat-foot .chat-col {
   gap: var(--s-3);
 }
 .chat-empty {
+  position: relative;
   display: grid;
   gap: var(--s-4);
   padding-top: clamp(16px, 10vh, 120px);
+  isolation: isolate;
+}
+/* A slow-breathing moonlight glow behind the greeting. */
+.chat-orb {
+  position: absolute;
+  z-index: -1;
+  top: clamp(-40px, 4vh, 60px);
+  left: -60px;
+  width: 340px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--accent-glow), transparent), radial-gradient(closest-side at 70% 60%, var(--aura-2), transparent);
+  filter: blur(30px);
+  animation: breathe 7s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.55;
+    transform: translateX(24px) scale(1.08);
+  }
 }
 .chat-hello {
   font-size: clamp(2rem, 4vw, 2.8rem);
   letter-spacing: -0.04em;
+  background: linear-gradient(100deg, var(--fg) 30%, var(--accent-text) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: page-in 0.5s var(--ease-out) both;
+}
+.suggest {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+.suggest-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  align-content: start;
+  gap: 6px 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-1);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--highlight);
+  text-align: left;
+  cursor: pointer;
+  animation: rise 0.5s var(--ease-out) both;
+  transition: transform 0.2s var(--ease-out), border-color 0.2s, box-shadow 0.2s;
+}
+.suggest-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+  box-shadow: var(--highlight), 0 14px 32px -16px var(--accent-glow);
+}
+.suggest-card:active {
+  transform: translateY(-1px);
+}
+.suggest-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.suggest-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.suggest-text {
+  grid-column: 1 / -1;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@media (max-width: 560px) {
+  .suggest {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .drawer-btn,
 .drawer-scrim {
@@ -3569,4 +3863,41 @@
   .login-page {
     padding-block: var(--s-6);
   }
+}
+
+/* ---------- glass ---------- */
+/* ponytail: one blur per card; dozens of .mcard on a page cost GPU time. Drop .mcard here if scrolling the catalog stutters. */
+.panel,
+.tabs,
+.stats-grid,
+.verify-grid li,
+.warming,
+.composer,
+.chat-side,
+.kpi,
+.gpu-block,
+.auto-ticket,
+.mcard,
+.detail-stats,
+.dialog,
+.os-tabs,
+.add-aside,
+.pair-card,
+.discovery,
+.glance-item,
+.agree,
+.ref-flow li,
+.honest {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.chat-side {
+  background: var(--bg-1);
+}
+/* Popovers sit inside the blurred masthead, where a second blur can't reach the page, so they stay nearly opaque. */
+.acct-pop,
+.picker-pop {
+  background: var(--glass-pop);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }

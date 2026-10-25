@@ -32,6 +32,7 @@
   --r-lg: 16px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --glass-blur: blur(20px) saturate(1.6);
 }
 
 /* ---------- dark (default) ---------- */
@@ -39,10 +40,11 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --bg: oklch(0.145 0.005 265);
-  --bg-1: oklch(0.17 0.006 265);
-  --bg-2: oklch(0.2 0.007 265);
+  /* Glass: translucent surfaces over the aura below. */
+  --bg-1: oklch(0.24 0.012 265 / 0.42);
+  --bg-2: oklch(0.3 0.014 265 / 0.5);
   --bg-3: oklch(0.125 0.005 265);
-  --line: oklch(1 0 0 / 0.08);
+  --line: oklch(1 0 0 / 0.11);
   --line-2: oklch(1 0 0 / 0.14);
   --line-3: oklch(1 0 0 / 0.24);
   --fg: oklch(0.97 0.003 265);
@@ -63,8 +65,12 @@
   --code-bg: oklch(0.115 0.005 265);
   --code-fg: oklch(0.92 0.006 265);
   --panel: oklch(0.18 0.006 265 / 0.72);
-  --highlight: inset 0 1px 0 oklch(1 0 0 / 0.06);
+  --highlight: inset 0 1px 0 oklch(1 0 0 / 0.12), 0 16px 40px -20px oklch(0 0 0 / 0.7);
   --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 12px 32px -12px oklch(0 0 0 / 0.6);
+  --glass-pop: oklch(0.2 0.01 265 / 0.86);
+  --aura-1: oklch(0.84 0.135 82 / 0.26);
+  --aura-2: oklch(0.55 0.17 285 / 0.38);
+  --aura-3: oklch(0.62 0.12 225 / 0.3);
   --grid: oklch(1 0 0 / 0.035);
   --grain: 0.04;
 }
@@ -73,8 +79,8 @@
 :root[data-theme='light'] {
   color-scheme: light;
   --bg: oklch(0.985 0.002 265);
-  --bg-1: oklch(0.995 0.001 265);
-  --bg-2: oklch(0.96 0.003 265);
+  --bg-1: oklch(1 0 0 / 0.55);
+  --bg-2: oklch(1 0 0 / 0.75);
   --bg-3: oklch(0.955 0.003 265);
   --line: oklch(0.2 0.01 265 / 0.09);
   --line-2: oklch(0.2 0.01 265 / 0.15);
@@ -97,10 +103,14 @@
   --code-bg: oklch(0.18 0.006 265);
   --code-fg: oklch(0.93 0.004 265);
   --panel: oklch(1 0 0 / 0.72);
-  --highlight: inset 0 1px 0 oklch(1 0 0 / 0.9);
+  --highlight: inset 0 1px 0 oklch(1 0 0 / 0.9), 0 16px 40px -22px oklch(0.3 0.03 265 / 0.25);
   --shadow: 0 1px 2px oklch(0.2 0.01 265 / 0.06), 0 12px 32px -14px oklch(0.2 0.01 265 / 0.18);
   --grid: oklch(0.2 0.01 265 / 0.045);
   --grain: 0.025;
+  --glass-pop: oklch(1 0 0 / 0.88);
+  --aura-1: oklch(0.85 0.13 82 / 0.35);
+  --aura-2: oklch(0.75 0.12 290 / 0.3);
+  --aura-3: oklch(0.8 0.09 220 / 0.32);
 }
 
 /* ---------- base ---------- */
@@ -127,6 +137,19 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+/* Soft color behind the page, so the glass surfaces have something to blur. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(40vmax 40vmax at 8% 12%, var(--aura-1), transparent 70%),
+    radial-gradient(45vmax 45vmax at 92% 30%, var(--aura-2), transparent 70%),
+    radial-gradient(40vmax 40vmax at 40% 100%, var(--aura-3), transparent 70%);
 }
 
 /* Faint grain over everything; keeps flat dark surfaces from banding. */
