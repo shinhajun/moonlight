@@ -121,6 +121,26 @@ export function Icon({ name, size = 16, ...rest }) {
           <path {...P} d="M10.5 3l2.5 2.5L6 12.5l-3 .5.5-3z" />
         </svg>
       );
+    case 'retry':
+      return (
+        <svg {...common}>
+          <path {...P} d="M13 8a5 5 0 1 1-1.5-3.6" />
+          <path {...P} d="M13 2.5v3h-3" />
+        </svg>
+      );
+    case 'down':
+      return (
+        <svg {...common}>
+          <path {...P} d="M8 3v10M4 9l4 4 4-4" />
+        </svg>
+      );
+    case 'search':
+      return (
+        <svg {...common}>
+          <circle {...P} cx="7" cy="7" r="4.5" />
+          <path {...P} d="M10.5 10.5L14 14" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -129,10 +149,10 @@ export function Icon({ name, size = 16, ...rest }) {
 // ---------------------------------------------------------------- verification badge
 
 const BADGE = {
-  verified: { label: 'Verified', tip: 'Passed hidden test jobs against a reference machine. No failures in the last 10 checks.' },
-  consistent: { label: 'Consistent', tip: 'Nothing to compare against yet, so it is checked for giving the same answer twice, with steady uptime.' },
-  new: { label: 'New', tip: 'Fewer than 3 checks so far. Not verified yet.' },
-  flagged: { label: 'Flagged', tip: 'Failed 2 or more of the last 10 checks. Suspended, and its earnings are held.' },
+  verified: { label: 'Verified', tip: 'Safe to use. We secretly test this seller all the time, and it passed every recent test.' },
+  consistent: { label: 'Consistent', tip: 'One of a kind, so there is nothing to compare it to. We check that it answers the same way every time and stays online.' },
+  new: { label: 'New', tip: 'Just joined. Not enough tests yet to say either way.' },
+  flagged: { label: 'Flagged', tip: 'Caught failing our tests. Blocked from new work, and its pay is frozen.' },
 };
 
 export function Badge({ state = 'new', verification, size = 'md', withTip = true }) {
@@ -239,22 +259,33 @@ export function ShareBar({ share = 0, total = 0 }) {
 
 // ---------------------------------------------------------------- copy box
 
-export function CopyBox({ code, label, step, lang = 'sh', compact = false }) {
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const t = document.createElement('textarea');
+    t.value = text;
+    document.body.appendChild(t);
+    t.select();
+    document.execCommand('copy');
+    t.remove();
+  }
+}
+
+// A copy action that flips to a check for a moment.
+export function useCopied() {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      const t = document.createElement('textarea');
-      t.value = code;
-      document.body.appendChild(t);
-      t.select();
-      document.execCommand('copy');
-      t.remove();
-    }
+  const copy = async (text) => {
+    await copyText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
   };
+  return [copied, copy];
+}
+
+export function CopyBox({ code, label, step, lang = 'sh', compact = false }) {
+  const [copied, copyCode] = useCopied();
+  const copy = () => copyCode(code);
   return (
     <div className={`copybox ${compact ? 'compact' : ''}`}>
       {(label || step) && (

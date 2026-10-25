@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, requestError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS, MAX_WAIT_S } from '../api.js';
 import { Link } from '../router.jsx';
-import { Badge, Machine, Icon, useNow } from './ui.jsx';
+import { Badge, Machine, Icon, useNow, useCopied } from './ui.jsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -128,8 +128,17 @@ export function useChat({ model, verifiedOnly = false, seller, messages: initial
     run(kept.filter((m) => m.role === 'user' || m.status === 'done'), useModel);
   };
 
+  // Drops a user message and everything after it, and hands back its text to edit and resend.
+  const edit = (userId) => {
+    const all = latest.current;
+    const i = all.findIndex((m) => m.id === userId);
+    if (i < 0 || busy) return '';
+    setMessages(all.slice(0, i));
+    return all[i].content;
+  };
+
   const stop = () => abort.current?.abort();
-  return { messages, setMessages, send, retry, stop, busy };
+  return { messages, setMessages, send, retry, edit, stop, busy };
 }
 
 // ---------------------------------------------------------------- tiny markdown
@@ -152,6 +161,36 @@ function inline(text, keyBase) {
   return out;
 }
 
+function CodeBlock({ lang, code }) {
+  const [copied, copy] = useCopied();
+  return (
+    <div className="md-code">
+      <div className="md-code-head">
+        <span>{lang || 'code'}</span>
+        <button type="button" className="md-code-copy" onClick={() => copy(code)} aria-label={copied ? 'Copied' : 'Copy code'}>
+          <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function Action({ icon, label, onClick }) {
+  return (
+    <button type="button" className="msg-act" onClick={onClick} aria-label={label} title={label}>
+      <Icon name={icon} size={14} />
+    </button>
+  );
+}
+
+function CopyAction({ text }) {
+  const [copied, copy] = useCopied();
+  return <Action icon={copied ? 'check' : 'copy'} label={copied ? 'Copied' : 'Copy'} onClick={() => copy(text)} />;
+}
+
 export function Markdown({ text }) {
   const parts = text.split(/```/);
   return (
@@ -161,11 +200,7 @@ export function Markdown({ text }) {
           const nl = part.indexOf('\n');
           const lang = nl > 0 ? part.slice(0, nl).trim() : '';
           const code = nl >= 0 ? part.slice(nl + 1) : part;
-          return (
-            <pre key={i} className="md-code" data-lang={lang || undefined}>
-              <code>{code.replace(/\n$/, '')}</code>
-            </pre>
-          );
+          return <CodeBlock key={i} lang={lang} code={code.replace(/\n$/, '')} />;
         }
         return part
           .split(/\n{2,}/)
@@ -307,11 +342,15 @@ function Receipt({ meta, model }) {
   );
 }
 
-export function Message({ m, onRetry, onSuggest }) {
+export function Message({ m, onRetry, onSuggest, onEdit, last }) {
   if (m.role === 'user') {
     return (
       <div className="msg msg-user">
         <div className="msg-slip">{m.content}</div>
+        <div className="msg-acts">
+          <CopyAction text={m.content} />
+          {onEdit && <Action icon="pencil" label="Edit and resend" onClick={() => onEdit(m.id)} />}
+        </div>
       </div>
     );
   }
@@ -386,13 +425,44 @@ export function Message({ m, onRetry, onSuggest }) {
       )}
       {(m.status === 'done' || m.status === 'lost' || m.status === 'stopped') && m.meta && <Receipt meta={m.meta} model={m.model} />}
       {m.status === 'stopped' && <p className="faint small">Stopped.</p>}
+      {['done', 'stopped', 'lost'].includes(m.status) && m.content && (
+        <div className={`msg-acts ${last ? 'on' : ''}`}>
+          <CopyAction text={m.content} />
+          {last && <Action icon="retry" label="Regenerate" onClick={() => onRetry(m.id)} />}
+        </div>
+      )}
     </div>
   );
 }
 
-export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask anything…', autoFocus }) {
-  const [text, setText] = useState('');
+const readDraft = (key) => {
+  try {
+    return (key && sessionStorage.getItem(key)) || '';
+  } catch {
+    return '';
+  }
+};
+
+// `draftKey` keeps unsent text per conversation for this tab; `seed` ({ text }) replaces the text, e.g. to edit a sent message.
+export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask anything…', autoFocus, draftKey, seed }) {
+  const [text, setText] = useState(() => readDraft(draftKey));
   const ref = useRef(null);
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      if (text) sessionStorage.setItem(draftKey, text);
+      else sessionStorage.removeItem(draftKey);
+    } catch {
+      /* storage blocked */
+    }
+  }, [text, draftKey]);
+  useEffect(() => {
+    if (!seed) return;
+    setText(seed.text);
+    const el = ref.current;
+    el?.focus();
+    requestAnimationFrame(() => el?.setSelectionRange(seed.text.length, seed.text.length));
+  }, [seed]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -406,7 +476,7 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask an
     setText('');
   };
   return (
-    <form className="composer" onSubmit={submit}>
+    <form className={`composer ${busy ? 'is-busy' : ''}`} onSubmit={submit}>
       <textarea
         ref={ref}
         className="composer-input"

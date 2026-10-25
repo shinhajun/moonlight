@@ -17,9 +17,9 @@ const GATES = {
   19: 'makes',
 };
 const MEASURED = [
-  ['Same GPU, twice', 0.97, 'pass'],
-  ['Honest CPU vs GPU', 0.94, 'pass'],
-  ['0.5B model posing as 3B', 0.69, 'fail'],
+  ['Real AI, asked twice', 0.97, 'pass'],
+  ['Real AI, on a different machine', 0.94, 'pass'],
+  ['Cheaper AI pretending to be the real one', 0.69, 'fail'],
 ];
 
 function Agreement() {
@@ -34,11 +34,12 @@ function Agreement() {
           Honest seller
         </button>
         <button type="button" className="chip" role="radio" aria-checked={who === 'cheat'} aria-pressed={who === 'cheat'} onClick={() => setWho('cheat')}>
-          Cheater: smaller model, same label
+          Cheating seller
         </button>
       </div>
+      <p className="small muted">{who === 'honest' ? 'Runs the AI it advertises.' : 'Advertises a big AI, but secretly runs a cheaper one.'}</p>
       <p className="agree-prompt">
-        <span className="label">Test job</span> In one sentence, why does bread dough rise?
+        <span className="label">Secret test question</span> In one sentence, why does bread dough rise?
       </p>
       <p className="agree-text">
         {ANSWER.map((w, i) => {
@@ -58,14 +59,14 @@ function Agreement() {
       </p>
       <div className="agree-legend small">
         <span>
-          <i className="lg-ref" /> what the reference says next
+          <i className="lg-ref" /> small word: the right answer
         </span>
         <span>
-          <i className="lg-home" /> what the seller&apos;s GPU says next
+          <i className="lg-home" /> big word: the seller&apos;s guess
         </span>
       </div>
       <div className={`agree-result ${pass ? 'pass' : 'fail'}`}>
-        <b className="num">{agree} of 8</b> next words agree
+        <b className="num">{agree} of 8</b> guesses right
         <span>{pass ? 'Passes (needs 7 of 8)' : 'Fails (needs 7 of 8)'}</span>
         <Badge state={pass ? 'verified' : 'flagged'} size="lg" withTip={false} />
       </div>
@@ -73,12 +74,12 @@ function Agreement() {
   );
 }
 
-// Measured agreement scores as bars on a 0.5–1.0 scale, with the 7-of-8 pass line.
+// Measured agreement scores as bars on a 50–100% scale, with the 7-of-8 pass line.
 function Measured() {
   const pos = (v) => `${((v - 0.5) / 0.5) * 100}%`;
   return (
     <figure className="measured">
-      <figcaption className="label">Measured next-word agreement</figcaption>
+      <figcaption className="label">How often the guess is right, from real tests</figcaption>
       {MEASURED.map(([label, v, k]) => (
         <div key={label} className={`m-row ${k}`}>
           <span className="m-label">{label}</span>
@@ -86,16 +87,16 @@ function Measured() {
             <span className="m-fill" style={{ width: pos(v) }} />
             <span className="m-pass" style={{ left: pos(0.875) }} aria-hidden />
           </span>
-          <b className="num">{v.toFixed(2)}</b>
+          <b className="num">{Math.round(v * 100)}%</b>
         </div>
       ))}
       <div className="m-row m-scale num" aria-hidden>
         <span className="m-track">
-          <span style={{ left: 0 }}>0.5</span>
+          <span style={{ left: 0 }}>50%</span>
           <span className="m-pass-label" style={{ left: pos(0.875) }}>
-            pass 0.875
+            pass mark
           </span>
-          <span style={{ left: '100%' }}>1.0</span>
+          <span style={{ left: '100%' }}>100%</span>
         </span>
       </div>
     </figure>
@@ -135,7 +136,7 @@ export default function Trust() {
       <header className="page-head trust-head">
         <p className="eyebrow">Verification</p>
         <h1 className="h1">How we know a seller runs what they list.</h1>
-        <p className="lede">Anyone can claim their GPU runs a big model. So we check, quietly and often, with test jobs no seller can tell apart from real ones.</p>
+        <p className="lede">Anyone can say their computer runs a powerful AI. So we keep testing every seller with secret questions that look exactly like real ones. They never know which is which.</p>
       </header>
 
       <section className="glance" aria-label="Badges">
@@ -149,15 +150,14 @@ export default function Trust() {
 
       <section className="trust-block">
         <div className="trust-copy">
-          <p className="eyebrow">The check</p>
-          <h2 className="h2">Guess the next word</h2>
+          <p className="eyebrow">The test</p>
+          <h2 className="h2">Fill in the blank</h2>
           <p>
-            Two honest GPUs rarely write the same paragraph word for word, so comparing whole answers would fail honest sellers. Instead we take a reference answer, cut it off at 8
-            places, and ask the seller&apos;s GPU for just the <b>next word</b>.
+            We stop a sentence partway and ask the seller&apos;s AI for <b>just the next word</b>. We already know the right word, because we run the same AI ourselves.
           </p>
           <p className="muted">
-            The same half-finished text goes to a reference GPU too. A GPU running the model it claims agrees almost every time. A smaller model wearing the same label
-            doesn&apos;t.
+            The real AI picks the right word almost every time. A cheaper AI pretending to be the real one gets a lot of them wrong, and that is how we catch it. Try both
+            sellers on the right.
           </p>
           <Measured />
         </div>

@@ -36,7 +36,6 @@ import {
   TorusGeometry,
   WebGLRenderer,
 } from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -173,6 +172,29 @@ function shadowTexture() {
   g.fillRect(0, 0, 256, 256);
   g.restore();
   return new CanvasTexture(c);
+}
+
+// A dark studio for the metal to mirror, in place of a lit room: tall softbox strips (warm key front left, cool
+// strip far left that the turned shroud swings into, cool rim behind right, a thin gold kick low behind) and only a
+// faint ceiling, so reflections read as long streaks with deep falloff between them. Colors above 1 are HDR.
+function studioEnvironment(pmrem) {
+  const env = new Scene();
+  env.background = new Color('#0b0d11'); // a faint base, so flat dark faces never go to pure black
+  const strip = (w, h, color, intensity, dir) => {
+    const m = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ color: new Color(color).multiplyScalar(intensity) }));
+    m.position.set(...dir).setLength(7);
+    m.lookAt(0, m.position.y, 0);
+    env.add(m);
+  };
+  strip(1.1, 9, '#fff1de', 4, [-0.45, 0.15, 0.9]);
+  strip(1.2, 9, '#cfe0ff', 3.5, [-1, 0.1, 0.05]);
+  strip(1.4, 9, '#a9c8ff', 9, [0.75, 0.2, -0.65]);
+  strip(5, 0.5, '#f2c56b', 5, [-0.6, -0.35, -0.7]);
+  strip(1.6, 6, '#e8ecf2', 1.6, [0.85, 0.1, 0.5]);
+  strip(6, 6, '#d9dee6', 0.5, [0, 1, 0.1]); // a faint ceiling, too dim to read as a panel on the fin tops
+  const tex = pmrem.fromScene(env, 0.02).texture;
+  env.traverse((o) => (o.geometry?.dispose(), o.material?.dispose()));
+  return tex;
 }
 
 function buildGpu() {
@@ -529,25 +551,24 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
 
   const scene = new Scene();
   const pmrem = new PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = studioEnvironment(pmrem);
   scene.environmentIntensity = 1.0;
 
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 0, 12);
 
-  // Studio rig: warm key from top right, cool rim from behind for edge highlights, a little gold kick.
-  const key = new DirectionalLight('#fff4e6', 2.6);
-  key.position.set(4, 5, 6);
-  const rim = new DirectionalLight('#a9c8ff', 3.4);
-  rim.position.set(4, 2, -5);
-  const kick = new DirectionalLight(ACCENT, 1.4);
-  kick.position.set(-6, 1.5, -2);
-  const fill = new DirectionalLight('#dfe3ea', 0.45);
-  fill.position.set(-3, -2, 4);
+  // Low-key rig: a warm key high on the right, hard cool rim from behind for edge highlights, a gold kick, and
+  // no fill so the shadow side falls off.
+  const key = new DirectionalLight('#fff1de', 3.2);
+  key.position.set(4, 6, 5);
+  const rim = new DirectionalLight('#a9c8ff', 5);
+  rim.position.set(4, 3, -5);
+  const kick = new DirectionalLight(ACCENT, 2);
+  kick.position.set(-6, 1, -3);
   // Turned, the fans face left, away from the key: a soft front-left light keeps them reading.
-  const side = new DirectionalLight('#e6eaf0', 0.9);
+  const side = new DirectionalLight('#e6eaf0', 0.6);
   side.position.set(-6, 3, 5);
-  scene.add(key, rim, kick, fill, side);
+  scene.add(key, rim, kick, side);
 
   // Contact shadow: a wide soft layer and a tight dark core under the card.
   const shadowTex = shadowTexture();
@@ -575,7 +596,7 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     // A material's own envMapIntensity only applies with its own envMap.
     rig.dim?.forEach((m) => {
       m.envMap = scene.environment;
-      m.envMapIntensity = 0.3;
+      m.envMapIntensity = 0.6;
       m.needsUpdate = true;
     });
     pose.add(r.object);
@@ -612,8 +633,8 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
   const turn = new Matrix4();
   const euler = new Euler();
   const v = new Vector3();
-  function fit(t, pitch, yaw) {
-    turn.makeRotationFromEuler(euler.set(pitch, yaw, 0));
+  function fit(t, pitch, yaw, roll) {
+    turn.makeRotationFromEuler(euler.set(pitch, yaw, roll));
     let n = 0;
     let x0 = Infinity;
     let x1 = -Infinity;
@@ -703,16 +724,20 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     });
     if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.62, 0.85, t);
     if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.62, 0.85, t) * glowScale;
-    // About 15° of yaw at rest, turning to 43° and tilting toward the viewer as it opens: the layers separate
-    // mostly in depth, so the opened card stays narrow enough to be big between the side texts. The lens
-    // narrows at the same time (the fit keeps the size), so the front layers don't swell and turn edge-on.
+    // At rest, a hero shot: seen from below (top leaning away), about 24° of yaw, a slight dutch roll and a long
+    // lens. Opening, the view cranes up over the card while it swings to 43° and levels out, ending on the
+    // internals from above: the layers separate mostly in depth, so the opened card stays narrow enough to be
+    // big between the side texts. The lens narrows further (the fit keeps the size), so the front layers
+    // don't swell and turn edge-on.
     const k = smooth(TURN[0], TURN[1], t);
-    const yaw = MathUtils.lerp(-0.26, -0.75, k);
-    const pitch = MathUtils.lerp(0.05, 0.35, k);
-    camera.fov = MathUtils.lerp(30, 20, k);
-    root.rotation.set(pitch, yaw + idle * Math.sin(time * 0.3) * 0.07, 0);
+    const yaw = MathUtils.lerp(-0.42, -0.75, k);
+    const pitch = MathUtils.lerp(-0.14, 0.4, k);
+    const roll = MathUtils.lerp(0.06, 0, k);
+    camera.fov = MathUtils.lerp(24, 17, k);
+    // Idle: a slow orbit and a drifting camera height, out of phase so the move never visibly loops.
+    root.rotation.set(pitch + idle * Math.sin(time * 0.21) * 0.03, yaw + idle * Math.sin(time * 0.3) * 0.08, roll);
     root.position.y = idle * Math.sin(time * 0.6) * 0.03;
-    fit(t, pitch, yaw);
+    fit(t, pitch, yaw, roll);
     const light = document.documentElement.dataset.theme === 'light';
     const ground = 1 - 0.9 * smooth(0.06, 0.4, t);
     shadow.children[0].material.opacity = (light ? 0.22 : 0.45) * ground;

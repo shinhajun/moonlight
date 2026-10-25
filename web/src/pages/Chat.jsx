@@ -3,7 +3,7 @@ import { listOf, useApi, useMe, usd, priceLabel, ms, AUTO_MODELS, ago } from '..
 import { Link, navigate } from '../router.jsx';
 import { useChat, Message, Composer, PrivacyLine } from '../components/ChatCore.jsx';
 import { loginPath } from './Login.jsx';
-import { Machine, ShareBar } from '../components/ui.jsx';
+import { Machine, ShareBar, Icon } from '../components/ui.jsx';
 
 const STORE = 'ml-chats';
 const load = () => {
@@ -23,11 +23,25 @@ const save = (chats) => {
 const newChat = (model) => ({ id: Math.random().toString(36).slice(2, 10), title: '', model, messages: [], updated: Date.now() });
 
 const SUGGESTIONS = [
-  'Explain embeddings to a new engineer in three sentences',
-  'Write a SQL query that finds duplicate emails',
-  'What does 4-bit quantization trade away?',
-  'Draft a short, friendly payment reminder',
+  ['chat', 'Explain', 'Explain embeddings to a new engineer in three sentences'],
+  ['code', 'Code', 'Write a SQL query that finds duplicate emails'],
+  ['bolt', 'Learn', 'What does 4-bit quantization trade away?'],
+  ['pencil', 'Write', 'Draft a short, friendly payment reminder'],
 ];
+
+const DAY = 86_400_000;
+// Sidebar sections by last activity, newest first.
+function groupByDay(chats, now = Date.now()) {
+  const today = new Date(now).setHours(0, 0, 0, 0);
+  const label = (t) => (t >= today ? 'Today' : t >= today - DAY ? 'Yesterday' : t >= today - 7 * DAY ? 'Previous 7 days' : 'Older');
+  const groups = [];
+  for (const c of chats) {
+    const l = label(c.updated);
+    if (groups.at(-1)?.[0] !== l) groups.push([l, []]);
+    groups.at(-1)[1].push(c);
+  }
+  return groups;
+}
 
 // Until the catalog arrives the picker is a placeholder, so the default model never flashes and changes.
 function PickerSkeleton() {
@@ -104,7 +118,7 @@ function ModelPicker({ value, onChange, models }) {
 function ChatWindow({ chat, onUpdate, models, ready, me }) {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [model, setModel] = useState(chat.model);
-  const { messages, send, retry, stop, busy } = useChat({
+  const { messages, send, retry, edit, stop, busy } = useChat({
     model,
     verifiedOnly,
     messages: chat.messages.map((m) => (['waiting', 'queued', 'dispatched', 'thinking', 'streaming'].includes(m.status) ? { ...m, status: m.content ? 'stopped' : 'cancelled' } : m)),
@@ -118,10 +132,29 @@ function ChatWindow({ chat, onUpdate, models, ready, me }) {
   }, [models]); // eslint-disable-line react-hooks/exhaustive-deps
   const scroller = useRef(null);
   const stick = useRef(true);
+  const [away, setAway] = useState(false);
+  const [seed, setSeed] = useState(null);
   useEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
+  const toBottom = () => {
+    const el = scroller.current;
+    stick.current = true;
+    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
+  // Esc stops an answer; "/" jumps to the composer from anywhere outside a text field.
+  useEffect(() => {
+    const key = (e) => {
+      if (e.key === 'Escape' && busy) stop();
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.target.closest('input, textarea, select, [contenteditable]')) {
+        e.preventDefault();
+        document.querySelector('.chat-foot .composer-input')?.focus();
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [busy, stop]);
   const current = models.find((m) => m.id === model);
   return (
     <section className="chat-main">
@@ -137,11 +170,13 @@ function ChatWindow({ chat, onUpdate, models, ready, me }) {
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          setAway(!stick.current);
         }}
       >
         <div className="chat-col">
           {messages.length === 0 ? (
             <div className="chat-empty">
+              <span className="chat-orb" aria-hidden />
               <h1 className="chat-hello">What do you want to run?</h1>
               {models.length > 0 && !models.some((m) => m.sellers_online > 0) && (
                 <p className="notice">
@@ -155,19 +190,25 @@ function ChatWindow({ chat, onUpdate, models, ready, me }) {
                     ? `${current.sellers_online} ${current.sellers_online === 1 ? 'GPU is' : 'GPUs are'} serving ${model} right now.`
                     : ''}
               </p>
-              <div className="chips">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="chip" onClick={() => (me ? send(s) : navigate(loginPath('/chat')))}>
-                    {s}
+              <div className="suggest">
+                {SUGGESTIONS.map(([icon, title, s], i) => (
+                  <button key={s} type="button" className="suggest-card" style={{ animationDelay: `${120 + i * 60}ms` }} onClick={() => (me ? send(s) : navigate(loginPath('/chat')))}>
+                    <span className="suggest-icon">
+                      <Icon name={icon} size={15} />
+                    </span>
+                    <span className="suggest-title">{title}</span>
+                    <span className="suggest-text">{s}</span>
                   </button>
                 ))}
               </div>
             </div>
           ) : (
-            messages.map((m) => (
+            messages.map((m, i) => (
               <Message
                 key={m.id}
                 m={m}
+                last={i === messages.length - 1}
+                onEdit={busy ? null : (id) => setSeed({ text: edit(id) })}
                 onRetry={(id) => retry(id)}
                 onSuggest={(id, s) => {
                   setModel(s);
@@ -179,13 +220,23 @@ function ChatWindow({ chat, onUpdate, models, ready, me }) {
         </div>
       </div>
       <footer className="chat-foot">
+        {away && messages.length > 0 && (
+          <button type="button" className="to-bottom" onClick={toBottom} aria-label="Jump to the latest message">
+            <Icon name="down" size={15} />
+          </button>
+        )}
         <div className="chat-col">
           {me ? (
             <Composer
-              onSend={(t) => send(t)}
+              onSend={(t) => {
+                stick.current = true;
+                send(t);
+              }}
               onStop={stop}
               busy={busy}
               autoFocus
+              draftKey={`ml-draft-${chat.id}`}
+              seed={seed}
               placeholder={ready ? `Message ${AUTO_MODELS.find((a) => a.id === model)?.label.toLowerCase() || model}` : 'Message'}
             />
           ) : (
@@ -224,6 +275,7 @@ export default function Chat() {
     return q ? null : chats[0]?.id;
   });
   const [drawer, setDrawer] = useState(false);
+  const [query, setQuery] = useState('');
 
   // Arriving with ?model= starts a fresh conversation on that model.
   useEffect(() => {
@@ -257,37 +309,51 @@ export default function Chat() {
     if (!chats.some((c) => c.id === currentId)) setCurrentId(chats[0]?.id);
   }, [chats, currentId]);
 
+  const saved = chats.filter((c) => c.messages.length).sort((a, b) => b.updated - a.updated);
+  const q = query.trim().toLowerCase();
+  // ponytail: scans every message of up to 50 saved chats per keystroke; fine at this size.
+  const shown = q ? saved.filter((c) => c.title.toLowerCase().includes(q) || c.messages.some((m) => m.content?.toLowerCase().includes(q))) : saved;
+
   return (
     <main className={`chat-page ${drawer ? 'drawer-open' : ''}`}>
       <aside className="chat-side" aria-label="Conversations">
         <button type="button" className="btn btn-small btn-primary new-chat" onClick={start}>
           + New chat
         </button>
-        <ol className="chat-list">
-          {chats
-            .filter((c) => c.messages.length)
-            .sort((a, b) => b.updated - a.updated)
-            .map((c) => (
-              <li key={c.id} className={c.id === current?.id ? 'on' : ''}>
-                <button
-                  type="button"
-                  className="chat-item"
-                  onClick={() => {
-                    setCurrentId(c.id);
-                    setDrawer(false);
-                  }}
-                >
-                  <span className="chat-item-title">{c.title || 'New chat'}</span>
-                  <span className="chat-item-meta">
-                    {c.model.replace('auto/', 'auto · ')} · {ago(c.updated)}
-                  </span>
-                </button>
-                <button type="button" className="chat-del" onClick={() => remove(c.id)} aria-label={`Delete “${c.title}”`}>
-                  ×
-                </button>
-              </li>
-            ))}
-        </ol>
+        {saved.length > 4 && (
+          <label className="chat-search">
+            <Icon name="search" size={14} />
+            <input type="search" placeholder="Search chats" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search chats" />
+          </label>
+        )}
+        {query && shown.length === 0 && <p className="faint small chat-none">No chats match “{query}”.</p>}
+        {groupByDay(shown).map(([label, group]) => (
+          <section key={label} className="chat-group">
+            <h2 className="chat-group-label">{label}</h2>
+            <ol className="chat-list">
+              {group.map((c) => (
+                <li key={c.id} className={c.id === current?.id ? 'on' : ''}>
+                  <button
+                    type="button"
+                    className="chat-item"
+                    onClick={() => {
+                      setCurrentId(c.id);
+                      setDrawer(false);
+                    }}
+                  >
+                    <span className="chat-item-title">{c.title || 'New chat'}</span>
+                    <span className="chat-item-meta">
+                      {c.model.replace('auto/', 'auto · ')} · {ago(c.updated)}
+                    </span>
+                  </button>
+                  <button type="button" className="chat-del" onClick={() => remove(c.id)} aria-label={`Delete “${c.title}”`}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
         <p className="chat-side-note faint small">Conversations stay in this browser.</p>
         <Link to="/models" className="ghost">
           Browse all models
