@@ -258,7 +258,7 @@ test('--keep-warm loads a cold model, then backs off when something else evicts 
     }
   });
 
-test('--vram-budget leaves out big models; the agent yields while the owner needs the GPU and resumes after quiet',
+test('--vram-budget leaves out big models; the agent keeps serving while the owner uses the GPU, yields when memory runs short and resumes',
   { skip: process.platform === 'win32' && 'uses a shell-script nvidia-smi', timeout: 60_000 }, async () => {
     // A stand-in nvidia-smi whose numbers the test controls: a 24 GB card, quiet or busy.
     const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'moonlight-gpu-'));
@@ -286,6 +286,12 @@ esac
       const listed = n.hello.models.map((m) => m.model_id);
       assert.ok(listed.includes(CHAT), 'a 0.4 GB model fits a 1 GB budget');
       if (installed.has(BIG)) assert.ok(!listed.includes(BIG), `${BIG} needs more than 1 GB, so it is not listed`);
+      // The owner using the GPU with memory to spare (a game, a render) is no reason to stop selling.
+      fs.writeFileSync(state, '24564, 4000, 20564, 95');
+      await sleep(8000); // more than two GPU samples, 3 s apart
+      const shared = await stub.dispatch(n, 'chat', CHAT, chatBody('hi'));
+      assert.ok(shared.done, `serves while the owner uses the GPU: ${shared.error?.code}`);
+      assert.doesNotMatch(a.out(), /Pausing/);
       const paused = once(stub.events, 'frame', (e) => e.node === n && e.msg.t === 'status' && e.msg.paused && e.msg.reason === 'owner_busy', 20_000);
       fs.writeFileSync(state, busy);
       const p = await paused;

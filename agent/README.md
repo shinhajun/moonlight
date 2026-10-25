@@ -83,7 +83,7 @@ To stop, press `q` or Ctrl-C, or run `moonlight stop` from another terminal. The
 | `--price-out <usd>` / `--price-in <usd>` / `--price-call <usd>` | Your price per 1M output tokens / per 1M input tokens / per decision call |
 | `--concurrency <n>` | Jobs at once (default: `OLLAMA_NUM_PARALLEL`, else 1) |
 | `--vram-budget <GB\|%>` | The most GPU memory Moonlight may use, e.g. `8` or `50%`. Models that need more aren't listed, and if several listed models together go over, the least recently used ones are unloaded |
-| `--no-yield` | Keep serving even when your own apps need the GPU (see below; reference nodes use this) |
+| `--no-yield` | Keep serving even when your own apps run short of GPU memory (see below; reference nodes use this) |
 | `--keep-alive <dur>` | How long Ollama keeps a model loaded after a Moonlight job, e.g. `2m`, or `0` to unload right away (default: Ollama's own setting). `--keep-warm` models are exempt |
 | `--keep-warm a,b` | Keep these Ollama models loaded so buyers skip the cold start: a ping every 4 min refreshes Ollama's own `keep_alive`. A cold model is loaded only if it fits in free memory. If something else evicts it, the agent backs off (8, 16, … up to 60 min) instead of fighting for VRAM |
 | `--endpoint <url>` | Also serve an OpenAI-compatible server, e.g. `http://127.0.0.1:9000/v1` (repeatable) |
@@ -96,12 +96,11 @@ Environment variables: `MOONLIGHT_TOKEN`, `MOONLIGHT_GATEWAY`, `MOONLIGHT_HOME` 
 
 ### Your computer comes first
 
-Moonlight only uses spare GPU memory, whether or not you're at the computer:
-- **Yielding.** Every 3 seconds the agent checks how much GPU memory your own apps are using. It pauses (`status` with `reason: "owner_busy"`) when they need the GPU:
+Moonlight only uses spare GPU memory, whether or not you're at the computer. You keep using the GPU (a game, a render, your own model) while it earns: the two share the GPU's compute, so neither stops.
+- **Yielding.** Every 3 seconds the agent checks how much GPU memory your own apps are using. It pauses (`status` with `reason: "owner_busy"`) only when they run short of memory:
   - free memory drops below 10% (at least 1.5 GB) because of your apps, or
-  - the GPU is busy while Moonlight is idle (a game, a render, your own model), or
   - on a Mac, the system reports memory pressure.
-- **What happens on yield.** Jobs already running finish. The gateway sends new work to other sellers. Moonlight then unloads its models to hand the memory back, and resumes after 60 seconds of quiet. `--no-yield` turns this off.
+- **What happens on yield.** Jobs already running finish. The gateway sends new work to other sellers. Moonlight then unloads its models to hand the memory back, and resumes after 60 seconds with memory to spare. `--no-yield` turns this off.
 - **What it reads.** On NVIDIA GPUs (Linux and Windows) it uses `nvidia-smi`. On Apple silicon it reads the GPU's utilization counter (`ioreg`) and the kernel's memory-pressure level. Neither needs root. Apple-silicon yielding hasn't been tested on a real Mac yet.
 - **The dashboard** shows a GPU line: total memory, a bar, and the split between your apps, Moonlight and spare memory. While yielding it shows a `YIELDING TO YOU` banner.
 

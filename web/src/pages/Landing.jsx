@@ -160,7 +160,7 @@ const more = (first, second) => (
 // Each side is [title, copy, cta?]; only the last beat carries the calls to action.
 const STORY = [
   [
-    ['Runs alongside your apps', more('When a game, an editor or your own models need the GPU, Moonlight pauses and unloads.', 'It picks up again once things are quiet.')],
+    ['Runs alongside your apps', more('Keep gaming, editing or running your own models while Moonlight earns.', 'It steps aside only if your apps run short of GPU memory.')],
     ['One OpenAI-compatible API', more('Point the OpenAI SDK at Moonlight by changing the base URL.', 'Your code, prompts and streaming stay the same.')],
   ],
   [

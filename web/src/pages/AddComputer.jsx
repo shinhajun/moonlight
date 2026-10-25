@@ -171,7 +171,7 @@ export default function AddComputer() {
             </div>
             <div>
               <dt>Your apps first</dt>
-              <dd>When your own apps need the GPU, Moonlight pauses and unloads its models. It resumes once things are quiet.</dd>
+              <dd>Keep using your GPU while Moonlight earns. If your apps run short of GPU memory, Moonlight pauses and unloads its models, then resumes when there&apos;s room.</dd>
             </div>
             <div>
               <dt>Verification</dt>

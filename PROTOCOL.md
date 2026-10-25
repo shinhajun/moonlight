@@ -377,7 +377,7 @@ Positioning: sellers earn from their **spare** GPU memory **whether they are usi
   - `reason`: `"manual" | "owner_busy"`, present only when paused.
   - `vram`: `{total_gb, free_gb|null, moonlight_gb, others_gb|null, budget_gb|null}`.
   - The agent sends it on pause/resume, on job start/end, and when free or Moonlight memory moves by ≥ 0.5 GB.
-- **Owner busy:** the agent sets `paused` with `reason:"owner_busy"` when the owner's own apps need the GPU. That means low free memory caused by other processes, memory pressure, or GPU busy while Moonlight is idle, held for 2 samples in a row. In-flight jobs finish, Moonlight's models unload, and selling resumes after 60 s of quiet.
+- **Owner busy:** the agent sets `paused` with `reason:"owner_busy"` when the owner's own apps need Moonlight's GPU memory. That means low free memory caused by other processes, or memory pressure, held for 2 samples in a row. A busy GPU with memory to spare is not owner busy: the owner and Moonlight share the compute. In-flight jobs finish, Moonlight's models unload, and selling resumes after 60 s with memory to spare.
 - **Gateway:**
   - Routes nothing to a paused node.
   - Stores the `vram` numbers and `reason`, and exposes them in `/api/me/nodes`, `/api/models/:id` listings, and SSE `node` events (`paused, reason, vram`).

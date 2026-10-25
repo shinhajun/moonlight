@@ -33,7 +33,8 @@ Options
   --price-in <usd>           price per 1M input tokens, for chat and embeddings
   --price-call <usd>         decision-model price per call
   --vram-budget <GB|%>       the most GPU memory Moonlight may use, e.g. 8 or 50%; bigger models aren't listed
-  --no-yield                 keep serving when your own apps need the GPU (default: pause until it's quiet)
+  --no-yield                 keep serving even when your apps run short of GPU memory (default: step aside
+                             until there's room again; using the GPU yourself never pauses Moonlight)
   --concurrency <n>          jobs served at once (default: OLLAMA_NUM_PARALLEL, else 1)
   --keep-warm <a,b,...>      keep these Ollama models loaded so buyers skip the cold start; yields when
                              something else needs the memory
@@ -535,7 +536,6 @@ const st = {
   yielding: null, // {since, reason} while the owner's own apps need the GPU
   overBudget: [], // models that need more VRAM than --vram-budget allows: shown, not listed
   lastUsed: new Map(), // model_id -> when its last job finished
-  lastJobAt: 0,
   draining: false,
   drainDeadline: 0,
 };
@@ -872,8 +872,8 @@ async function firstRunSummary(base) {
   line('GPU', g?.total_gb ? `${g.total_gb} GB${g.free_gb != null ? ` · ${g.free_gb} GB free now` : ''}${g.source === 'apple' ? ' (shared with the system)' : ''}`
     : dim('not monitored on this computer'));
   line('Budget', ctx.budget != null ? `Moonlight uses at most ${bold(`${ctx.budget} GB`)} of GPU memory` : 'no limit: Moonlight may use any spare GPU memory (set one with --vram-budget)');
-  line('Yielding', ctx.yieldToOwner ? `${green('on')}: pauses whenever your own apps need the GPU, resumes after ${YIELD_QUIET_MS / 1000} s of quiet`
-    : `${yellow('off')} (--no-yield): keeps serving even when the GPU is busy`);
+  line('Yielding', ctx.yieldToOwner ? `${green('on')}: keeps earning while you use the GPU; steps aside only if your apps run short of GPU memory, resumes after ${YIELD_QUIET_MS / 1000} s`
+    : `${yellow('off')} (--no-yield): keeps serving even when GPU memory runs short`);
   if (ctx.keepWarm.length) line('Keep warm', ctx.keepWarm.join(', '));
   line('Prices', st.models.some((m) => m.price) ? 'your --price flags' : `market price for each model's size; change them at ${cyan(`${base}/me/sell`)}`);
   line('Stop', `press q or Ctrl-C (finishes jobs first), or run ${bold('moonlight stop')}`);
@@ -1232,7 +1232,6 @@ async function runJob(msg) {
     clearTimeout(timer);
     st.activeJobs.delete(job_id);
     st.lastUsed.set(model_id, Date.now());
-    st.lastJobAt = Date.now();
     sendStatus();
     if (ctx.keepAlive != null && model.runtime === 'ollama' && !isWarm(model)) setKeepAlive(model);
   }
@@ -1330,8 +1329,7 @@ async function serveDecision(job, base, runtimeModel, body) {
 // ---------------------------------------------------------------------------------------------
 
 const GPU_SAMPLE_MS = 3000;
-const YIELD_QUIET_MS = Number(process.env.MOONLIGHT_YIELD_QUIET_MS) || 60_000; // resume after this long without owner activity
-const YIELD_UTIL = 40; // GPU % busy while Moonlight is idle: the owner is using it
+const YIELD_QUIET_MS = Number(process.env.MOONLIGHT_YIELD_QUIET_MS) || 60_000; // resume after this long with memory to spare
 const gpu = { sample: null, busyHits: 0, quietSince: 0, lastStatus: null };
 
 // Usable GPU memory. Apple silicon shares RAM with the GPU, and Ollama there uses about 3/4 of it.
@@ -1394,15 +1392,14 @@ async function sampleGpu() {
     others_gb: round(Math.max(0, sum(1) / 1024 - moonlight)), util: Math.max(...rows.map((r) => r[3] || 0)), pressure: null, resident };
 }
 
-// Why the owner's own work needs the GPU right now, or null.
+// Why the owner's own apps need Moonlight's GPU memory right now, or null. A busy GPU alone is no reason:
+// compute is shared, so the owner keeps using it while Moonlight earns.
 function ownerBusy(s) {
-  const idle = st.activeJobs.size === 0 && Date.now() - st.lastJobAt > 5000;
   if (s.free_gb != null && s.total_gb) {
     // Short on memory because of the owner's apps, not because of Moonlight's own models.
     if (s.free_gb < Math.max(1.5, s.total_gb * 0.1) && s.others_gb > s.total_gb * 0.15) return `only ${s.free_gb} GB of GPU memory free`;
   }
   if (s.pressure >= 2) return 'your Mac is low on memory';
-  if (idle && s.util != null && s.util >= YIELD_UTIL) return `your apps are using the GPU (${s.util}%)`;
   return null;
 }
 
