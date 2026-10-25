@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, flash, friendly, refreshMe, useMe, usd } from '../api.js';
 import { Link, navigate } from '../router.jsx';
 import { Icon } from '../components/ui.jsx';
+import { Logo } from '../App.jsx';
+import { can3D } from './Landing.jsx';
+
+const GpuStage = lazy(() => import('../components/GpuStage.jsx'));
 import { googleError, googleIdToken, preloadGoogle, redirectIdToken } from '../firebase.js';
 
 const NEXT_KEY = 'ml-login-next';
@@ -42,9 +46,110 @@ function GoogleMark() {
   );
 }
 
-// Email + password. Secondary to Google on the login page.
-function PasswordForm({ onDone, onGoogleAccount }) {
-  const [mode, setMode] = useState('login');
+const PERKS = [
+  ['chat', 'Chat with open AI models'],
+  ['code', 'One API key for every model'],
+  ['gpu', 'Earn from the spare memory on your GPU'],
+];
+const HEAD = {
+  login: { title: 'Welcome back', note: 'Sign in to chat, use your API keys, and see your earnings.' },
+  signup: { title: 'Create your account', note: 'Free to start. Google sign-in creates your account in one step.' },
+};
+
+// Two mirrored fans of 36 curves behind the brand panel, in a 696×316 box. Built once, so each line keeps its
+// random speed across renders.
+const fan = (pos) =>
+  Array.from({ length: 36 }, (_, i) => {
+    const x = (n) => n - i * 5 * pos;
+    return {
+      d: `M-${x(380)} -${189 + i * 6}C-${x(380)} -${189 + i * 6} -${x(312)} ${216 - i * 6} ${x(152)} ${343 - i * 6}C${x(616)} ${470 - i * 6} ${x(684)} ${875 - i * 6} ${x(684)} ${875 - i * 6}`,
+      width: 0.5 + i * 0.03,
+      opacity: Math.min(1, 0.1 + i * 0.03),
+      dur: 20 + Math.random() * 10,
+      delay: Math.random() * 20,
+    };
+  });
+const LINES = [...fan(1), ...fan(-1)];
+
+// Drawn on a canvas at 30 fps: as 72 animated SVG paths, every frame repainted the panel and starved the rest of
+// the page (the form flickered and vanished). Each line's lit half travels to the far end and back over its dur.
+function FloatingPaths() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas.getContext('2d');
+    // Path lengths, for dashes measured in fractions of each line.
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    document.body.append(svg);
+    const lines = LINES.map((l) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      el.setAttribute('d', l.d);
+      svg.append(el);
+      return { ...l, path: new Path2D(l.d), len: el.getTotalLength() };
+    });
+    svg.remove();
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    let last = 0;
+    const draw = (now) => {
+      raf = still ? 0 : requestAnimationFrame(draw);
+      if (now - last < 33) return;
+      last = now;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (!w || !h) return; // the panel is hidden on narrow screens
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      // Fit the 696×316 box centered, like SVG's default viewBox fit; the curves run past it to fill the panel.
+      const k = Math.min(w / 696, h / 316) * dpr;
+      ctx.setTransform(k, 0, 0, k, (w * dpr - 696 * k) / 2, (h * dpr - 316 * k) / 2);
+      ctx.clearRect(-1e4, -1e4, 2e4, 2e4);
+      ctx.strokeStyle = getComputedStyle(canvas).color;
+      const t = now / 1000;
+      for (const l of lines) {
+        const phase = (((t + l.delay) / l.dur) % 1 + 1) % 1;
+        const tri = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+        ctx.globalAlpha = l.opacity * (0.3 + 0.3 * tri);
+        ctx.lineWidth = l.width;
+        ctx.setLineDash([l.len * 0.5, l.len]);
+        ctx.lineDashOffset = -tri * l.len;
+        ctx.stroke(l.path);
+      }
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div className="auth-paths" aria-hidden>
+      <canvas ref={ref} />
+    </div>
+  );
+}
+
+// The landing page's card, big at the bottom of the brand panel: the still at once, the live 3D card (idle sway,
+// spinning fans) fading in over it where WebGL will be smooth. Narrow screens hide the panel, so they skip it.
+const AT_REST = { current: 0 };
+function PanelGpu() {
+  const live = useMemo(() => can3D() && matchMedia('(min-width: 1024px)').matches, []);
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
+  return (
+    <div className={`auth-gpu ${ready ? 'ready' : ''}`} aria-hidden>
+      <img className="auth-gpu-still" src="/gpu-still.webp" alt="" />
+      {live && (
+        <Suspense fallback={null}>
+          <GpuStage progress={AT_REST} onReady={onReady} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+// Email + password. Secondary to Google on the login page; the mode comes from the switch below the form.
+function PasswordForm({ mode, setMode, onDone, onGoogleAccount }) {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -73,43 +178,45 @@ function PasswordForm({ onDone, onGoogleAccount }) {
   };
   return (
     <form className="authform" onSubmit={submit}>
-      <div className="tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={mode === 'login'} onClick={() => setMode('login')}>
-          Sign in
-        </button>
-        <button type="button" role="tab" aria-selected={mode === 'signup'} onClick={() => setMode('signup')}>
-          Create account
-        </button>
+      {/* Height-animates in for sign-up; inert while closed so it can't be tabbed into. */}
+      <div className={`reveal ${mode === 'signup' ? 'open' : ''}`} inert={mode !== 'signup'}>
+        <div>
+          <label className="field">
+            <span>Name</span>
+            <input className="input" value={form.name} onChange={set('name')} placeholder="Ada Lovelace" autoComplete="name" />
+          </label>
+        </div>
       </div>
-      {mode === 'signup' && (
-        <label className="field">
-          <span>Name</span>
-          <input className="input" value={form.name} onChange={set('name')} placeholder="Ada Lovelace" autoComplete="name" />
-        </label>
-      )}
       <label className="field">
         <span>Email</span>
-        <input className="input" type="email" required value={form.email} onChange={set('email')} placeholder="you@example.com" autoComplete="email" />
+        <span className="input-icon">
+          <Icon name="at" />
+          <input className="input" type="email" required value={form.email} onChange={set('email')} placeholder="you@example.com" autoComplete="email" />
+        </span>
       </label>
       <label className="field">
         <span>Password</span>
-        <input
-          className="input"
-          type="password"
-          required
-          minLength={mode === 'signup' ? 8 : undefined}
-          value={form.password}
-          onChange={set('password')}
-          placeholder={mode === 'signup' ? 'At least 8 characters' : ''}
-          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-        />
+        <span className="input-icon">
+          <Icon name="lock" />
+          <input
+            className="input"
+            type="password"
+            required
+            minLength={mode === 'signup' ? 8 : undefined}
+            value={form.password}
+            onChange={set('password')}
+            placeholder={mode === 'signup' ? 'At least 8 characters' : ''}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+          />
+        </span>
       </label>
       {error && (
-        <p className="form-error" role="alert">
+        <p key={error} className="form-error" role="alert">
           {error}
         </p>
       )}
       <button className="btn btn-secondary" disabled={busy}>
+        {busy && <span className="btn-spinner" aria-hidden />}
         {busy ? 'One moment…' : mode === 'signup' ? 'Create account' : 'Sign in'}
       </button>
     </form>
@@ -122,8 +229,8 @@ export default function Login() {
   const next = safeNext(params.get('next') || sessionStorage.getItem(NEXT_KEY));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [showEmail, setShowEmail] = useState(params.get('mode') === 'email');
   const [nudge, setNudge] = useState(false);
+  const [mode, setMode] = useState(params.get('mode') === 'signup' ? 'signup' : 'login');
 
   const finish = () => {
     sessionStorage.removeItem(NEXT_KEY);
@@ -168,43 +275,81 @@ export default function Login() {
     }
   };
 
+  const other = mode === 'login' ? 'signup' : 'login';
   return (
-    <main className="wrap page login-page">
-      <div className="login-copy">
-        <p className="eyebrow">Moonlight</p>
-        <h1 className="h1">Sign in or create an account.</h1>
-        <p className="lede">One account to use open models through chat and the API, and to earn from the spare VRAM on your own GPUs.</p>
-      </div>
-      <div className="panel login-panel">
-        <button type="button" className={`btn btn-primary btn-google ${nudge ? 'nudge' : ''}`} onClick={google} disabled={busy}>
-          <span className="g-badge">
-            <GoogleMark />
-          </span>
-          {busy ? 'Waiting for Google…' : 'Continue with Google'}
-        </button>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
+    <main className="auth">
+      {/* Entrance steps are staggered with --i (one step = 70ms), set per element. */}
+      <aside className="auth-side">
+        <Link to="/" className="auth-brand login-rise" style={{ '--i': 0 }}>
+          <Logo size={26} />
+          Moonlight
+        </Link>
+        <PanelGpu />
+        <div className="auth-quote">
+          <p className="login-rise" style={{ '--i': 2 }}>
+            Earn from your spare GPU. Use open models for less.
           </p>
-        )}
-        <p className="faint small">New here? Signing in creates your account. The first new account from each network gets $5 of demo credit a day.</p>
-        <div className="or">
-          <span>or</span>
+          <ul className="login-perks">
+            {PERKS.map(([icon, text], i) => (
+              <li key={icon} className="login-rise" style={{ '--i': i + 3 }}>
+                <span className="perk-icon">
+                  <Icon name={icon} />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
         </div>
-        {showEmail ? (
-          <PasswordForm
-            onDone={finish}
-            onGoogleAccount={() => {
-              setNudge(true);
-              setTimeout(() => setNudge(false), 1200);
-            }}
-          />
-        ) : (
-          <button type="button" className="link email-toggle" onClick={() => setShowEmail(true)}>
-            Use email and password instead
+        <FloatingPaths />
+      </aside>
+      <section className="auth-main">
+        <Link to="/" className="btn btn-ghost btn-sm auth-home">
+          <Icon name="arrow" />
+          Home
+        </Link>
+        <div className="auth-form">
+          <Link to="/" className="auth-brand login-rise" style={{ '--i': 0 }}>
+            <Logo size={24} />
+            Moonlight
+          </Link>
+          <div key={mode} className="login-head">
+            <h1 className="h2">{HEAD[mode].title}</h1>
+            <p className="muted">{HEAD[mode].note}</p>
+          </div>
+          <button type="button" className={`btn btn-primary btn-google login-rise ${nudge ? 'nudge' : ''}`} style={{ '--i': 2 }} onClick={google} disabled={busy}>
+            <span className="g-badge">{busy ? <span className="btn-spinner" aria-hidden /> : <GoogleMark />}</span>
+            {busy ? 'Waiting for Google…' : 'Continue with Google'}
           </button>
-        )}
-      </div>
+          {error && (
+            <p key={error} className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="or login-rise" style={{ '--i': 3 }}>
+            <span>or</span>
+          </div>
+          <div className="login-rise" style={{ '--i': 4 }}>
+            <PasswordForm
+              mode={mode}
+              setMode={setMode}
+              onDone={finish}
+              onGoogleAccount={() => {
+                setNudge(true);
+                setTimeout(() => setNudge(false), 1200);
+              }}
+            />
+          </div>
+          <p className="small muted login-rise" style={{ '--i': 5 }}>
+            {mode === 'login' ? 'New to Moonlight?' : 'Already have an account?'}{' '}
+            <button type="button" className="link" onClick={() => setMode(other)}>
+              {mode === 'login' ? 'Create an account' : 'Sign in'}
+            </button>
+          </p>
+          <p className="faint xs login-rise" style={{ '--i': 6 }}>
+            The first new account from each network gets $5 of demo credit a day.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }

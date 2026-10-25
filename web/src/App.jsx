@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, navigate, usePath } from './router.jsx';
 import { flash, signOut, useFlash, useMe, usd } from './api.js';
 import { Icon } from './components/ui.jsx';
@@ -33,15 +33,16 @@ function route(path) {
 }
 
 export function Logo({ size = 22 }) {
+  const id = useId(); // per instance: a shared id breaks when the first logo on the page is hidden
   return (
     <svg className="logo" width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <defs>
-        <linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="var(--accent-2)" />
           <stop offset="1" stopColor="var(--accent)" />
         </linearGradient>
       </defs>
-      <path d="M15.4 2.4A10 10 0 1 0 21.6 16.9 8 8 0 0 1 15.4 2.4z" fill="url(#logo-g)" />
+      <path d="M15.4 2.4A10 10 0 1 0 21.6 16.9 8 8 0 0 1 15.4 2.4z" fill={`url(#${id})`} />
     </svg>
   );
 }
@@ -149,13 +150,19 @@ function Masthead({ path }) {
           <Logo />
           <span>Moonlight</span>
         </Link>
-        <nav className="nav" aria-label="Main">
-          {LINKS.map(([to, label]) => (
-            <Link key={to} to={to} aria-current={at(to)}>
-              {label}
-            </Link>
-          ))}
-        </nav>
+        {/* One floating pill: the links, then the call to action. */}
+        <div className="nav-pill">
+          <nav className="nav" aria-label="Main">
+            {LINKS.map(([to, label]) => (
+              <Link key={to} to={to} aria-current={at(to)}>
+                {label}
+              </Link>
+            ))}
+          </nav>
+          <Link to="/add" className="nav-cta" aria-current={at('/add')}>
+            Start earning <Icon name="arrow" />
+          </Link>
+        </div>
         <div className="masthead-end">
           {me ? (
             <AccountMenu me={me} path={path} />
@@ -166,9 +173,6 @@ function Masthead({ path }) {
               </Link>
             )
           )}
-          <Link to="/add" className="btn btn-primary btn-sm nav-sell" aria-current={at('/add')}>
-            Start earning
-          </Link>
           <ThemeToggle />
           <button type="button" className="icon-btn menu-btn" aria-expanded={menu} aria-controls="mobile-menu" aria-label={menu ? 'Close menu' : 'Open menu'} onClick={() => setMenu((m) => !m)}>
             <span className={`burger ${menu ? 'x' : ''}`} aria-hidden>
@@ -299,17 +303,18 @@ export default function App() {
   }, [path]);
   const [Page, props] = route(path);
   const bare = path === '/chat';
+  const auth = path === '/login'; // the sign-in page is full screen with its own Home link
   return (
     <div className="app">
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <Masthead path={path} />
+      {!auth && <Masthead path={path} />}
       <Flash />
       <div id="main" key={path.startsWith('/me/') ? '/me' : path} className="page-enter">
         <Page {...props} />
       </div>
-      {!bare && <Footer />}
+      {!bare && !auth && <Footer />}
     </div>
   );
 }

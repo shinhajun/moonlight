@@ -55,6 +55,20 @@ export function Icon({ name, size = 16, ...rest }) {
           <path {...P} d="M3 8h10M9 4l4 4-4 4" />
         </svg>
       );
+    case 'at':
+      return (
+        <svg {...common}>
+          <circle {...P} cx="8" cy="8" r="2.5" />
+          <path {...P} d="M10.5 8v1a2 2 0 0 0 4 0V8a6.5 6.5 0 1 0-2.6 5.2" />
+        </svg>
+      );
+    case 'lock':
+      return (
+        <svg {...common}>
+          <rect {...P} x="3" y="7" width="10" height="7" rx="1.5" />
+          <path {...P} d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+        </svg>
+      );
     case 'eye':
       return (
         <svg {...common}>

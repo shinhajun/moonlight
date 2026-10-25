@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api, requestError, streamChat, usd, ms, hardware, int, refreshMe, AUTO_MODELS, MAX_WAIT_S } from '../api.js';
 import { Link } from '../router.jsx';
 import { Badge, Machine, Icon, useNow, useCopied } from './ui.jsx';
+import { PromptInput } from './ui/ai-chat-input.tsx';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -444,7 +445,8 @@ const readDraft = (key) => {
 };
 
 // `draftKey` keeps unsent text per conversation for this tab; `seed` ({ text }) replaces the text, e.g. to edit a sent message.
-export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask anything…', autoFocus, draftKey, seed }) {
+// models/model/onModel add a model menu to the composer; without them it's hidden.
+export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask anything…', autoFocus, draftKey, seed, models, model, onModel }) {
   const [text, setText] = useState(() => readDraft(draftKey));
   const ref = useRef(null);
   useEffect(() => {
@@ -463,46 +465,25 @@ export function Composer({ onSend, onStop, busy, disabled, placeholder = 'Ask an
     el?.focus();
     requestAnimationFrame(() => el?.setSelectionRange(seed.text.length, seed.text.length));
   }, [seed]);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(220, el.scrollHeight)}px`;
-  }, [text]);
-  const submit = (e) => {
-    e?.preventDefault();
-    if (busy || disabled || !text.trim()) return;
-    onSend(text);
-    setText('');
-  };
+  // Effort and images ride along in the composer's meta, but nothing downstream reads them yet: only the text is sent.
   return (
-    <form className={`composer ${busy ? 'is-busy' : ''}`} onSubmit={submit}>
-      <textarea
-        ref={ref}
-        className="composer-input"
-        rows={1}
-        value={text}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e);
-        }}
-        aria-label="Message"
-      />
-      {busy ? (
-        <button type="button" className="composer-btn stop" onClick={onStop} aria-label="Stop">
-          <span className="stop-square" />
-        </button>
-      ) : (
-        <button className="composer-btn" disabled={disabled || !text.trim()} aria-label="Send">
-          <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden>
-            <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-    </form>
+    <PromptInput
+      value={text}
+      onChange={setText}
+      onSubmit={(t) => {
+        onSend(t);
+        setText('');
+      }}
+      onStop={onStop}
+      busy={busy}
+      disabled={disabled}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      inputRef={ref}
+      models={models}
+      model={model}
+      onModel={onModel}
+    />
   );
 }
 

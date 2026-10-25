@@ -3,7 +3,8 @@ import { ago, badgeOf, clock, hardware, int, ms, osLabel, signOut, useApi, useEv
 import { Link, modelPath, navigate } from '../router.jsx';
 import { loginPath } from './Login.jsx';
 import ModelsReview from '../components/ModelsReview.jsx';
-import { Badge, Machine, Icon, RollingNumber, useNow, useTween } from '../components/ui.jsx';
+import { Badge, Machine, Icon, useNow } from '../components/ui.jsx';
+import { StatCard } from '../components/ui/stat-card.tsx';
 
 const METHOD_LABEL = { canary: 'Canary', replay: 'Replay', peer: 'Peer check', consistency: 'Consistency' };
 const METRIC = {
@@ -16,15 +17,9 @@ const METRIC = {
 // Earnings keep their tiny amounts ($0.000026), and an empty day reads $0.00.
 const earned = (micro) => (micro ? usd(micro) : '$0.00');
 
-function Kpi({ label, children, note, tone }) {
-  return (
-    <div className={`kpi ${tone ? `kpi-${tone}` : ''}`}>
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-      {note && <p>{note}</p>}
-    </div>
-  );
-}
+// Money cards count up in whole micro-dollars; a card without data yet reads '—'.
+const money = (digits) => (n) => usd(Math.round(n), digits);
+const pending = () => '—';
 
 function EarningsKpis({ me, nodes }) {
   const [extra, setExtra] = useState({ total: 0, held: 0 });
@@ -34,27 +29,24 @@ function EarningsKpis({ me, nodes }) {
       setExtra((x) => (d.held ? { ...x, held: x.held + d.amount_microusd } : { ...x, total: x.total + d.amount_microusd }));
     }
   });
-  const total = useTween(me.earnings.total + extra.total, 900);
   const today = (nodes || []).reduce((a, n) => a + (n.earnings?.today ?? 0), 0);
   const held = me.earnings.held + extra.held;
   const all = (nodes || []).flatMap((n) => n.models);
   const live = all.filter((m) => m.policy === 'live').length;
   const online = (nodes || []).filter((n) => n.online).length;
   return (
-    <dl className="kpis">
-      <Kpi label="Total earned" note="90% of every request your GPUs serve" tone="accent">
-        <RollingNumber value={usd(Math.round(total), 6)} className="kpi-big" />
-      </Kpi>
-      <Kpi label="Today">
-        <span className="num kpi-num">{nodes ? earned(today) : '—'}</span>
-      </Kpi>
-      <Kpi label="Held" tone={held > 0 ? 'bad' : undefined} note={held > 0 ? 'From flagged listings, until they pass again' : 'Nothing held'}>
-        <span className="num kpi-num">{earned(held)}</span>
-      </Kpi>
-      <Kpi label="Live models" note={nodes ? `${online} of ${nodes.length} GPUs online` : ' '}>
-        <span className="num kpi-num">{nodes ? live : '—'}</span>
-      </Kpi>
-    </dl>
+    <div className="kpis">
+      <StatCard className="accent" title="Total earned" value={me.earnings.total + extra.total} format={money(6)} note="90% of every request your GPUs serve" />
+      <StatCard title="Today" value={today} format={nodes ? (n) => earned(Math.round(n)) : pending} />
+      <StatCard
+        className={held > 0 ? 'bad' : ''}
+        title="Held"
+        value={held}
+        format={(n) => earned(Math.round(n))}
+        note={held > 0 ? 'From flagged listings, until they pass again' : 'Nothing held'}
+      />
+      <StatCard title="Live models" value={live} format={nodes ? undefined : pending} note={nodes ? `${online} of ${nodes.length} GPUs online` : ' '} />
+    </div>
   );
 }
 
@@ -330,23 +322,14 @@ function Selling({ me }) {
 
 function Buying({ me }) {
   const spentToday = me.requests.filter((r) => Date.now() - r.ts < 86_400_000).reduce((a, r) => a + r.cost_microusd, 0);
-  const balance = useTween(me.balance_microusd, 600);
   return (
     <div className="dash">
-      <dl className="kpis">
-        <Kpi label="Balance" note="Demo credit. No real payments yet." tone="accent">
-          <span className="num kpi-big">{usd(Math.round(balance), 6)}</span>
-        </Kpi>
-        <Kpi label="Spent today">
-          <span className="num kpi-num">{usd(spentToday)}</span>
-        </Kpi>
-        <Kpi label="Requests" note="Last 50 shown below">
-          <span className="num kpi-num">{int(me.requests.length)}</span>
-        </Kpi>
-        <Kpi label="API keys" note={<Link to="/docs">Manage keys</Link>}>
-          <span className="num kpi-num">{me.keys.length}</span>
-        </Kpi>
-      </dl>
+      <div className="kpis">
+        <StatCard className="accent" title="Balance" value={me.balance_microusd} format={money(6)} note="Demo credit. No real payments yet." />
+        <StatCard title="Spent today" value={spentToday} format={(n) => usd(Math.round(n))} />
+        <StatCard title="Requests" value={me.requests.length} note="Last 50 shown below" />
+        <StatCard title="API keys" value={me.keys.length} note={<Link to="/docs">Manage keys</Link>} />
+      </div>
 
       <section className="panel dash-section">
         <header className="block-head pad-x">

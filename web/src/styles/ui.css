@@ -112,7 +112,8 @@ pre code,
 }
 .masthead-in {
   --ctl: 34px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr; /* wordmark | centered pill | controls */
   align-items: center;
   gap: var(--s-5);
   height: 60px;
@@ -137,8 +138,58 @@ pre code,
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1;
   min-width: 0;
+}
+/* The floating nav: a glass capsule holding the links and a solid call-to-action pill. */
+.nav-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--bg) 62%, transparent);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--highlight), 0 12px 32px -14px oklch(0 0 0 / 0.55);
+}
+.nav-pill .nav a {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+}
+.nav-pill .nav a[aria-current='page'] {
+  background: none;
+  color: var(--fg);
+}
+.nav-pill .nav a:hover {
+  background: color-mix(in oklch, var(--fg) 7%, transparent);
+}
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px 0 18px;
+  border-radius: 999px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 0.2s var(--ease-out), box-shadow 0.2s;
+}
+.nav-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -8px color-mix(in oklch, var(--fg) 60%, transparent);
+}
+.nav-cta svg {
+  transform: rotate(-45deg);
+  transition: transform 0.25s var(--ease-out);
+}
+.nav-cta:hover svg {
+  transform: rotate(-45deg) translateX(2px);
 }
 .nav a {
   flex: none;
@@ -165,6 +216,7 @@ pre code,
 .masthead-end {
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 10px;
   flex: none;
 }
@@ -1161,14 +1213,35 @@ pre code,
   }
 }
 
+/* Wide screens: no bar, just the pill floating over a soft fade so content scrolling under stays out of the way. */
+@media (min-width: 861px) {
+  .masthead {
+    border-bottom: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  /* The blur lives on a pseudo-element so it can fade out at the bottom without fading the pill with it. */
+  .masthead::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 -28px;
+    z-index: -1;
+    background: linear-gradient(to bottom, color-mix(in oklch, var(--bg) 82%, transparent) 40%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    mask-image: linear-gradient(to bottom, #000 55%, transparent);
+    pointer-events: none;
+  }
+}
 @media (max-width: 860px) {
-  .nav,
+  .nav-pill,
   .nav-quiet,
-  .nav-sell,
   .acct {
     display: none;
   }
   .masthead-in {
+    display: flex;
     justify-content: space-between;
     height: 56px;
   }
@@ -1178,4 +1251,512 @@ pre code,
   .footer-in {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- glow card (components/ui/spotlight-card.tsx) ---------- */
+/* The component writes the pointer position: --x/--y in px from the card's corner, --xp from 0 to 1 across the viewport. The hue drifts by --spread across the screen. */
+.glow-card {
+  --border-size: 3px;
+  --spotlight-size: 200px;
+  --backdrop: hsl(0 0% 60% / 0.12);
+  --backup-border: var(--backdrop);
+  --hue: calc(var(--base) + var(--xp, 0) * var(--spread, 0));
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: var(--border-size) solid var(--backup-border);
+  border-radius: 16px;
+  background-color: var(--backdrop);
+  background-image: radial-gradient(
+    var(--spotlight-size) var(--spotlight-size) at calc(var(--x, 0) * 1px) calc(var(--y, 0) * 1px),
+    hsl(var(--hue) 100% 70% / 0.1),
+    transparent
+  );
+  box-shadow: 0 1rem 2rem -1rem black;
+  backdrop-filter: blur(5px);
+}
+.glow-blue { --base: 220; --spread: 200; }
+.glow-purple { --base: 280; --spread: 300; }
+.glow-green { --base: 120; --spread: 200; }
+.glow-red { --base: 0; --spread: 200; }
+/* Two lit rings on the border: a colored spot and a smaller white core. .glow-blur repeats them, blurred, as the outer glow. */
+.glow-card::before,
+.glow-card::after,
+.glow-blur::before,
+.glow-blur::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--border-size) * -1);
+  border: var(--border-size) solid transparent;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  mask: linear-gradient(transparent, transparent), linear-gradient(white, white);
+  mask-clip: padding-box, border-box;
+  mask-composite: intersect;
+  pointer-events: none;
+}
+.glow-card::before,
+.glow-blur::before {
+  background-image: radial-gradient(
+    calc(var(--spotlight-size) * 0.75) calc(var(--spotlight-size) * 0.75) at calc(var(--x, 0) * 1px) calc(var(--y, 0) * 1px),
+    hsl(var(--hue) 100% 50%),
+    transparent 100%
+  );
+  filter: brightness(2);
+}
+.glow-card::after,
+.glow-blur::after {
+  background-image: radial-gradient(
+    calc(var(--spotlight-size) * 0.5) calc(var(--spotlight-size) * 0.5) at calc(var(--x, 0) * 1px) calc(var(--y, 0) * 1px),
+    hsl(0 100% 100%),
+    transparent 100%
+  );
+}
+.glow-blur {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  filter: blur(calc(var(--border-size) * 10));
+  will-change: filter;
+  pointer-events: none;
+}
+.glow-blur::before {
+  inset: -10px;
+  border-width: 10px;
+}
+
+/* ---------- prompt input (components/ui/ai-chat-input.tsx) ---------- */
+/* A pill that springs open on focus. The card is a .composer (glass, focus ring, busy ring); the tools row and the
+   image tab open with the grid-rows trick so their height animates from 0. */
+.prompt-wrap {
+  --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin-inline: auto;
+  transition: max-width 0.45s var(--spring);
+}
+.prompt-wrap.is-open {
+  max-width: 100%;
+}
+/* .composer.prompt: pages.css loads after this file and its .composer is a flex row. */
+.composer.prompt {
+  display: block;
+  z-index: 1;
+  padding: 0;
+  border-radius: 24px;
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s, margin-top 0.4s var(--spring);
+}
+.prompt .composer-input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  max-height: 200px;
+  padding: 12px 56px 12px 18px;
+}
+.prompt-action {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.prompt-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  filter: blur(1px);
+  transform: scale(0.5) rotate(45deg);
+  transition: opacity 0.3s, filter 0.3s, transform 0.3s var(--spring);
+}
+.prompt-icon.on {
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+.prompt-action .stop-square {
+  width: 10px;
+  height: 10px;
+}
+
+.prompt-tools {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  filter: blur(4px);
+  transition: grid-template-rows 0.4s var(--spring), opacity 0.25s, filter 0.25s;
+}
+.prompt-wrap.is-open .prompt-tools {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  filter: none;
+}
+.prompt-wrap.is-recording .prompt-tools {
+  opacity: 0;
+  filter: blur(4px);
+  pointer-events: none;
+}
+.prompt-tools > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.prompt-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 52px 8px 10px;
+}
+.prompt-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.2s var(--spring);
+}
+.prompt-tool:hover,
+.prompt-tool[aria-expanded='true'] {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+.prompt-tool:active {
+  transform: scale(0.95);
+}
+.prompt-tool:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.prompt-tool-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: prompt-pop 0.3s var(--spring);
+}
+@keyframes prompt-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+.prompt-bars rect {
+  transition: opacity 0.3s;
+}
+.prompt-add {
+  width: 28px;
+  margin-left: auto;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The model menu opens upward from the tools row; a pill slides to the hovered option. */
+.prompt-menu {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  width: min(260px, calc(100% - 16px));
+  max-height: 290px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  background: var(--glass-pop);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transform-origin: bottom left;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.4s var(--spring);
+}
+.prompt-menu.on {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.prompt-hover {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--bg-2);
+  pointer-events: none;
+  transition: transform 0.3s var(--spring), opacity 0.15s;
+}
+.prompt-opt {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.prompt-opt[aria-selected='true'] {
+  color: var(--accent-text);
+}
+
+/* Dictation: live mic levels just left of the stop button, in place of the tools. */
+.prompt-levels {
+  position: absolute;
+  right: 50px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 34px;
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  transition: opacity 0.3s, transform 0.4s var(--spring);
+}
+.prompt-wrap.is-recording .prompt-levels {
+  opacity: 1;
+  transform: none;
+}
+.prompt-levels i {
+  width: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: height 75ms ease-out;
+}
+
+/* Attached images: a tab that slides up from behind the card. */
+.prompt-tray-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s var(--spring);
+}
+.prompt-tray-slot.on {
+  grid-template-rows: 1fr;
+}
+.prompt-tray-slot > div {
+  min-height: 0;
+  overflow: hidden;
+  padding-inline: 20px;
+}
+.prompt-tray-slot.on + .prompt {
+  margin-top: -12px;
+}
+.prompt-tray {
+  display: flex;
+  gap: 8px;
+  padding: 8px 8px 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  background: var(--panel);
+  opacity: 0;
+  transform: translateY(100%);
+  transition: transform 0.4s var(--spring), opacity 0.3s;
+}
+.prompt-tray-slot.on .prompt-tray {
+  opacity: 1;
+  transform: none;
+}
+.prompt-thumb-wrap {
+  position: relative;
+  flex: none;
+  animation: prompt-thumb-in 0.4s var(--spring) backwards;
+}
+@keyframes prompt-thumb-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.9);
+  }
+}
+.prompt-thumb {
+  display: block;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--bg-2);
+  cursor: zoom-in;
+  transition: transform 0.2s var(--spring);
+}
+.prompt-thumb:hover {
+  transform: scale(1.05);
+}
+.prompt-thumb:active {
+  transform: scale(0.95);
+}
+.prompt-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.prompt-thumb-x {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--glass-pop);
+  color: var(--fg);
+  opacity: 0;
+  transform: scale(0.5);
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s var(--spring);
+}
+.prompt-thumb-wrap:hover .prompt-thumb-x,
+.prompt-thumb-x:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .prompt-thumb-x {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The opened image; its box animates from the thumbnail in the component. */
+.prompt-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+.prompt-preview-bg {
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.prompt-preview img {
+  position: fixed;
+  object-fit: cover;
+  border-radius: 20px;
+  box-shadow: 0 24px 60px -12px oklch(0 0 0 / 0.5);
+}
+.prompt-preview-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--glass-pop);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* ---------- stat card (components/ui/stat-card.tsx) ---------- */
+/* Big counted-up number, title, then an icon chip and a note. The chip goes green or red only for a real trend. */
+.stat-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  box-shadow: var(--highlight);
+}
+.stat-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: clamp(2rem, 3.4vw, 2.9rem);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+.stat-card-suffix {
+  font-size: 0.5em;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+.stat-card-title {
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+}
+.stat-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+}
+.stat-card-chip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.stat-card-chip.up {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.stat-card-chip.down {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.stat-card-change {
+  font-weight: 600;
+}
+.stat-card-change.up {
+  color: var(--ok);
+}
+.stat-card-change.down {
+  color: var(--bad);
+}
+/* Tones: .accent leads a row of cards, .bad flags money that's held. */
+.stat-card.accent {
+  border-color: color-mix(in oklch, var(--accent) 30%, var(--line));
+  background: radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 60%), var(--bg-1);
+}
+.stat-card.accent .stat-card-value {
+  color: var(--accent-text);
+}
+.stat-card.bad .stat-card-value {
+  color: var(--bad);
+}
+.stat-card.bad .stat-card-chip {
+  background: var(--bad-bg);
+  color: var(--bad);
 }
