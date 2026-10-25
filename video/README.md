@@ -23,6 +23,7 @@ node scripts/record-hero.mjs                                             # landi
 node scripts/record-seller-web.mjs & python3 scripts/record-seller.py     # curl | sh, pairing, live jobs, yield
 node scripts/record-buyer-web.mjs && python3 scripts/record-buyer.py      # chat + receipt, API key, OpenAI SDK
 node scripts/record-trust-web.mjs & python3 scripts/record-cheater.py     # --cheat-serve gets flagged
+python3 scripts/record-dashboard.py                                      # optional: retake only the web dashboard clip
 python3 scripts/canary-example.py                                        # the explainer's real next-words example
 for c in seller buyer cheater; do node scripts/cast2frames.mjs out/assets/rec/$c.cast; done
 # 4. Compose and render
