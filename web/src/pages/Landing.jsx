@@ -1,7 +1,8 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, modelPath } from '../router.jsx';
-import { listOf, useApi, useEvents, usd, int, priceLabel, priceValue, KINDS } from '../api.js';
-import { Badge, CopyBox, Icon, RollingNumber, useTween, BADGE_COPY } from '../components/ui.jsx';
+import { listOf, useApi, useEvents, usd, priceLabel, priceValue, KINDS } from '../api.js';
+import { Badge, CopyBox, Icon, BADGE_COPY } from '../components/ui.jsx';
+import { StatCard } from '../components/ui/stat-card.tsx';
 import { BEATS, beat, chipsLit, copyOut } from '../components/gpu/timeline.js';
 import { installCommand, detectOS } from './AddComputer.jsx';
 import { BASE } from '../snippets.js';
@@ -9,7 +10,7 @@ import { BASE } from '../snippets.js';
 const GpuStage = memo(lazy(() => import('../components/GpuStage.jsx')));
 
 // WebGL only where it will be smooth: no reduced motion, real GPU, enough cores. ?gpu=3d|still overrides.
-function can3D() {
+export function can3D() {
   const q = new URLSearchParams(location.search).get('gpu');
   if (q === '3d') return true;
   if (q === 'still') return false;
@@ -279,27 +280,21 @@ function NetworkStats() {
   useEvents((type, d) => {
     if (type === 'earning' && !d.held) setExtra((x) => x + (d.amount_microusd || 0));
   });
-  const paid = useTween(data ? data.paid_to_sellers_microusd + extra : 0, 800);
   const s = data || {};
+  // Counts start at 0 until the first poll, so each card counts up when the numbers arrive.
   const items = [
-    ['GPUs online', int(s.nodes_online ?? 0), `from ${s.sellers_online ?? 0} ${s.sellers_online === 1 ? 'seller' : 'sellers'}`],
-    ['Models live', int(s.models_live ?? 0), 'chat, embedding and decision'],
-    ['Requests / min', int(s.requests_per_min ?? 0), 'routed to the best free GPU'],
-    ['Paid to sellers', usd(Math.round(paid), 4), '90% of every request'],
+    ['GPUs online', s.nodes_online ?? 0, `from ${s.sellers_online ?? 0} ${s.sellers_online === 1 ? 'seller' : 'sellers'}`],
+    ['Models live', s.models_live ?? 0, 'chat, embedding and decision'],
+    ['Requests / min', s.requests_per_min ?? 0, 'routed to the best free GPU'],
+    ['Paid to sellers', data ? data.paid_to_sellers_microusd + extra : 0, '90% of every request', (n) => usd(Math.round(n), 4)],
   ];
   return (
     <section className="wrap stats" aria-label="Live network">
-      <dl className="stats-grid">
-        {items.map(([label, value, note]) => (
-          <div key={label} className="stat">
-            <dt>{label}</dt>
-            <dd>
-              <RollingNumber value={value} className="stat-num" />
-            </dd>
-            <p>{note}</p>
-          </div>
+      <div className="stat-cards">
+        {items.map(([title, value, note, format]) => (
+          <StatCard key={title} title={title} value={value} note={note} format={format} />
         ))}
-      </dl>
+      </div>
     </section>
   );
 }

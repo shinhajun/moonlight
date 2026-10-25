@@ -437,39 +437,10 @@
 .stats {
   padding-block: var(--s-8) var(--s-6);
 }
-.stats-grid {
+.stat-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-1);
-  box-shadow: var(--highlight);
-  overflow: hidden;
-}
-.stat {
-  display: grid;
-  gap: 6px;
-  padding: var(--s-5);
-}
-.stat + .stat {
-  border-left: 1px solid var(--line);
-}
-.stat dt {
-  font-size: var(--text-sm);
-  color: var(--fg-3);
-}
-.stat dd {
-  margin: 0;
-}
-.stat-num {
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-}
-.stat p {
-  font-size: var(--text-xs);
-  color: var(--fg-3);
+  gap: var(--s-4);
 }
 
 /* two halves */
@@ -638,16 +609,11 @@
   .stats {
     padding-block: var(--s-6) var(--s-4);
   }
-  .stats-grid {
+  .stat-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-3);
   }
-  .stat:nth-child(3) {
-    border-left: 0;
-  }
-  .stat:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
-  }
-  .stat {
+  .stat-card {
     padding: var(--s-4);
   }
   .halves,
@@ -1165,6 +1131,43 @@
 }
 .new-chat {
   width: 100%;
+  gap: 8px;
+}
+.new-chat-plus {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--accent-ink) 14%, transparent);
+  font-size: 0.95rem;
+  line-height: 1;
+  transition: transform 0.3s var(--ease-out);
+}
+.new-chat:hover .new-chat-plus {
+  transform: rotate(90deg);
+}
+.chat-side-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: var(--s-3);
+  padding: var(--s-5) var(--s-3);
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  text-align: center;
+  font-size: var(--text-sm);
+  animation: rise 0.5s 200ms var(--ease-out) both;
+}
+.chat-side-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 .chat-list {
   list-style: none;
@@ -1277,8 +1280,35 @@
   opacity: 1;
 }
 .chat-side-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: auto;
   padding: 0 6px;
+}
+.chat-side-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  color: var(--fg-2);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.chat-side-link:hover {
+  border-color: var(--line-2);
+  background: color-mix(in oklch, var(--fg) 4%, transparent);
+  color: var(--fg);
+}
+.chat-side-link-go {
+  margin-left: auto;
+  transition: transform 0.2s var(--ease-out);
+}
+.chat-side-link:hover .chat-side-link-go {
+  transform: translateX(3px);
 }
 .chat-main {
   display: grid;
@@ -1294,8 +1324,26 @@
   border-bottom: 1px solid var(--line);
 }
 .chat-balance {
-  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-1);
+  font-size: var(--text-xs);
   color: var(--fg-3);
+}
+.chat-balance b {
+  font-weight: 500;
+  color: var(--accent-text);
+}
+/* Narrow screens: the masthead already shows the balance, and the model picker needs the room. */
+@media (max-width: 860px) {
+  .chat-balance {
+    display: none;
+  }
 }
 .chat-scroll {
   overflow-y: auto;
@@ -1339,55 +1387,208 @@
 .chat-foot .chat-col {
   gap: var(--s-3);
 }
+/* Empty chat: the greeting is centered in the space above the composer.
+   Auto margins (not justify-content) so a short window still scrolls to the top. */
+.chat-main.is-empty .chat-scroll {
+  display: flex;
+  flex-direction: column;
+}
+.chat-main.is-empty .chat-scroll > .chat-col {
+  width: 100%;
+  margin-block: auto;
+}
 .chat-empty {
   position: relative;
   display: grid;
-  gap: var(--s-4);
-  padding-top: clamp(16px, 10vh, 120px);
+  justify-items: center;
+  gap: var(--s-3);
+  padding-top: var(--s-5);
+  text-align: center;
   isolation: isolate;
 }
 /* A slow-breathing moonlight glow behind the greeting. */
 .chat-orb {
   position: absolute;
   z-index: -1;
-  top: clamp(-40px, 4vh, 60px);
-  left: -60px;
-  width: 340px;
-  height: 220px;
+  top: -40px;
+  left: 50%;
+  width: 520px;
+  height: 260px;
+  margin-left: -260px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, var(--accent-glow), transparent), radial-gradient(closest-side at 70% 60%, var(--aura-2), transparent);
-  filter: blur(30px);
+  background: radial-gradient(closest-side, var(--accent-glow), transparent), radial-gradient(closest-side at 75% 60%, var(--aura-2), transparent);
+  filter: blur(40px);
+  opacity: 0.8;
   animation: breathe 7s var(--ease-in-out) infinite;
   pointer-events: none;
 }
 @keyframes breathe {
   50% {
-    opacity: 0.55;
-    transform: translateX(24px) scale(1.08);
+    opacity: 0.45;
+    transform: scale(1.1);
   }
 }
+.chat-moon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--line));
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in oklch, var(--accent) 18%, transparent), transparent 70%), var(--bg-1);
+  box-shadow:
+    0 0 0 6px color-mix(in oklch, var(--accent) 5%, transparent),
+    0 0 40px -6px var(--accent-glow);
+  animation: rise 0.6s var(--ease-out) both;
+}
+.chat-moon svg {
+  filter: drop-shadow(0 0 10px var(--accent-glow));
+  animation: float 6s var(--ease-in-out) infinite;
+}
+/* Two tilted orbits, each carrying one small dot. */
+.moon-orbit {
+  position: absolute;
+  inset: -14px;
+  border: 1px dashed color-mix(in oklch, var(--accent) 22%, transparent);
+  border-radius: 50%;
+  animation: orbit 18s linear infinite;
+}
+.moon-orbit::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.moon-orbit-2 {
+  inset: -24px;
+  border-color: color-mix(in oklch, var(--fg) 8%, transparent);
+  animation-duration: 30s;
+  animation-direction: reverse;
+}
+.moon-orbit-2::after {
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  background: var(--fg-2);
+  box-shadow: 0 0 8px var(--fg-3);
+}
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes float {
+  50% {
+    transform: translateY(-3px) rotate(-6deg);
+  }
+}
+.live-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-top: var(--s-4);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-1);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  font-size: var(--text-xs);
+  color: var(--fg-2);
+  animation: rise 0.5s 80ms var(--ease-out) both;
+}
+.live-line.skeleton {
+  border: 0;
+}
+.live-line b {
+  font-weight: 600;
+  color: var(--fg);
+}
+.live-line .mono {
+  color: var(--fg);
+}
+.live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: ping 1.8s var(--ease-out) infinite;
+}
+.live-line.off .live-dot,
+.live-line.off .live-dot::after {
+  background: var(--fg-3);
+  animation: none;
+}
+@keyframes ping {
+  to {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+.live-sep {
+  width: 3px;
+  height: 3px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--fg-3);
+}
 .chat-hello {
-  font-size: clamp(2rem, 4vw, 2.8rem);
-  letter-spacing: -0.04em;
-  background: linear-gradient(100deg, var(--fg) 30%, var(--accent-text) 90%);
+  font-size: clamp(2.2rem, 4.4vw, 3.2rem);
+  letter-spacing: -0.045em;
+  background: linear-gradient(100deg, var(--fg) 25%, var(--accent-text) 60%, var(--fg) 95%) 0 0 / 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: page-in 0.5s var(--ease-out) both;
+  animation:
+    rise 0.6s 120ms var(--ease-out) both,
+    shine 8s 1s var(--ease-in-out) infinite;
+}
+/* The gold band drifts across the headline now and then. */
+@keyframes shine {
+  0%,
+  60% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.chat-sub {
+  max-width: 60ch;
+  color: var(--fg-2);
+  animation: rise 0.6s 160ms var(--ease-out) both;
 }
 .suggest {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-3);
+  gap: 10px;
+  width: 100%;
   margin-top: var(--s-2);
 }
 .suggest-card {
+  position: relative;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   align-content: start;
   gap: 6px 10px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--bg-1);
@@ -1396,13 +1597,28 @@
   box-shadow: var(--highlight);
   text-align: left;
   cursor: pointer;
+  isolation: isolate;
   animation: rise 0.5s var(--ease-out) both;
-  transition: transform 0.2s var(--ease-out), border-color 0.2s, box-shadow 0.2s;
+  transition: transform 0.25s var(--ease-out), border-color 0.25s, box-shadow 0.25s;
+}
+/* A soft light that follows the cursor (spotlight() in Chat.jsx sets --mx / --my). */
+.suggest-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), var(--accent-soft), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.suggest-card:hover::before {
+  opacity: 1;
 }
 .suggest-card:hover {
   transform: translateY(-3px);
   border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
-  box-shadow: var(--highlight), 0 14px 32px -16px var(--accent-glow);
+  box-shadow: var(--highlight), 0 16px 36px -18px var(--accent-glow);
 }
 .suggest-card:active {
   transform: translateY(-1px);
@@ -1413,17 +1629,60 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--accent-soft);
+  background: linear-gradient(135deg, color-mix(in oklch, var(--accent) 28%, transparent), var(--accent-soft));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 25%, transparent);
   color: var(--accent-text);
+  transition: transform 0.3s var(--ease-out);
+}
+.suggest-card:hover .suggest-icon {
+  transform: rotate(-8deg) scale(1.08);
 }
 .suggest-title {
   font-size: var(--text-sm);
   font-weight: 600;
 }
+.suggest-go {
+  color: var(--accent-text);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s, transform 0.25s var(--ease-out);
+}
+.suggest-card:hover .suggest-go,
+.suggest-card:focus-visible .suggest-go {
+  opacity: 1;
+  transform: none;
+}
 .suggest-text {
   grid-column: 1 / -1;
   font-size: var(--text-sm);
   line-height: 1.45;
+  color: var(--fg-2);
+}
+.chat-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+  animation: rise 0.5s 480ms var(--ease-out) both;
+}
+.chat-keys span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-keys kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-1);
+  font-size: 0.7rem;
   color: var(--fg-2);
 }
 @keyframes rise {
@@ -1435,6 +1694,9 @@
 @media (max-width: 560px) {
   .suggest {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-keys {
+    display: none;
   }
 }
 .drawer-btn,
@@ -1570,46 +1832,12 @@
   gap: var(--s-3);
   margin: 0;
 }
-.kpi {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: var(--s-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-1);
-  box-shadow: var(--highlight);
-}
-.kpi dt {
-  font-size: var(--text-sm);
-  color: var(--fg-3);
-}
-.kpi dd {
-  margin: 0;
-}
-.kpi p {
-  font-size: var(--text-xs);
-  color: var(--fg-3);
-}
-.kpi-num {
+/* Dashboard stat cards: smaller numbers than the landing's so micro-dollar amounts fit; the lead card is larger. */
+.kpis .stat-card-value {
   font-size: 1.6rem;
-  font-weight: 500;
-  letter-spacing: -0.02em;
 }
-.kpi-big {
+.kpis .stat-card:first-child .stat-card-value {
   font-size: clamp(1.9rem, 3vw, 2.5rem);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-}
-.kpi-accent {
-  border-color: color-mix(in oklch, var(--accent) 30%, var(--line));
-  background: radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 60%), var(--bg-1);
-}
-.kpi-accent .kpi-big {
-  color: var(--accent-text);
-}
-.kpi-bad dd {
-  color: var(--bad);
 }
 .alert {
   display: flex;
@@ -2110,10 +2338,10 @@
   .kpis {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .kpi:first-child {
+  .kpis .stat-card:first-child {
     grid-column: 1 / -1;
   }
-  .kpi {
+  .kpis .stat-card {
     padding: var(--s-4);
   }
   .gpu-card {
@@ -3415,19 +3643,21 @@
   margin-bottom: var(--s-8);
 }
 .glance-item {
-  display: grid;
+  /* A GlowCard: keep the site's card surface, and only nudge each badge's hue so the red card stays red. */
+  --backdrop: var(--bg-1);
+  --backup-border: var(--line);
+  --border-size: 1px;
+  --spread: 20;
   gap: 10px;
   align-content: start;
   justify-items: start;
   padding: var(--s-5);
-  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--bg-1);
   font-size: var(--text-sm);
   color: var(--fg-2);
 }
 .g-flagged {
-  border-color: color-mix(in oklch, var(--bad) 30%, var(--line));
+  --backup-border: color-mix(in oklch, var(--bad) 30%, var(--line));
 }
 .trust-block {
   display: grid;
@@ -3748,25 +3978,169 @@
 }
 
 /* ================================================================ SIGN IN */
-.login-page {
+/* Split screen: a brand panel with drifting lines (wide screens only) beside the form. The app hides the masthead and footer here. */
+.auth {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
-  gap: var(--s-8);
+  min-height: 100svh;
+}
+.auth-side {
+  position: relative;
+  isolation: isolate; /* so the lines can sit behind everything else in the panel */
+  display: none;
+  flex-direction: column;
+  padding: 40px;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  background: color-mix(in oklch, var(--fg) 4%, transparent);
+}
+/* A dark fade along the bottom edge, so the card rises out of it. */
+.auth-side::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(to top, var(--bg) 4%, transparent 32%);
+  pointer-events: none;
+}
+.auth-side > :not(.auth-paths) {
+  position: relative;
+  z-index: 2;
+}
+.auth-brand {
+  display: flex;
+  align-self: start;
+  color: var(--fg);
+  text-decoration: none;
   align-items: center;
-  padding-block: var(--s-8);
+  gap: 10px;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
-.login-copy {
+.auth-quote {
   display: grid;
-  gap: var(--s-3);
+  gap: var(--s-5);
+  margin-top: var(--s-7);
 }
-.login-panel {
-  display: grid;
+/* The card, big, rising out of the bottom edge: its box runs past the panel, which crops it, and sits under the
+   bottom fade. The 3D canvas fades in over the still. */
+.auth-side > .auth-gpu {
+  position: absolute;
+  top: max(34%, 330px); /* clear of the tagline and perks above */
+  bottom: -34%;
+  left: -8%;
+  right: -8%;
+  z-index: 0;
+  animation: auth-gpu-pop 1.2s cubic-bezier(0.2, 1.25, 0.35, 1) 0.3s backwards;
+}
+@keyframes auth-gpu-pop {
+  from {
+    opacity: 0;
+    transform: translateY(28%) scale(0.92);
+  }
+}
+.auth-gpu-still,
+.auth-gpu .gpu-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity 0.8s var(--ease-out);
+}
+.auth-gpu .gpu-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.auth-gpu .gpu-stage canvas {
+  opacity: 0;
+}
+.auth-gpu.ready .gpu-stage canvas {
+  opacity: 1;
+}
+.auth-gpu.ready .auth-gpu-still {
+  opacity: 0;
+}
+.auth-quote > p {
+  max-width: 24ch;
+  font-size: 1.6rem;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+.auth-paths {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  color: var(--fg);
+  pointer-events: none;
+}
+.auth-paths canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.auth-main {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 96px var(--gutter) 48px;
+  overflow: hidden;
+}
+/* Soft light from the top right corner. */
+.auth-main::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  z-index: -1;
+  width: 70%;
+  height: 120%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklch, var(--fg) 7%, transparent), transparent);
+  pointer-events: none;
+}
+.auth-home {
+  position: absolute;
+  top: 28px;
+  left: 20px;
+}
+.auth-home svg {
+  transform: rotate(180deg);
+}
+.btn.auth-home:hover svg {
+  transform: rotate(180deg) translateX(2px);
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
-  padding: var(--s-6);
+  width: 100%;
+  max-width: 384px;
+  margin-inline: auto;
 }
+.auth-form .h2 {
+  font-size: 1.6rem;
+}
+@media (min-width: 1024px) {
+  .auth {
+    grid-template-columns: 1fr 1fr;
+  }
+  .auth-side {
+    display: flex;
+  }
+  .auth-form > .auth-brand {
+    display: none;
+  }
+}
+/* The sheen (::after, in the motion block) needs the clip. */
 .btn-google {
+  position: relative;
   width: 100%;
   height: 46px;
+  overflow: hidden;
   font-size: var(--text-base);
 }
 .btn-google:hover svg {
@@ -3779,6 +4153,7 @@
   height: 26px;
   border-radius: 50%;
   background: oklch(0.99 0 0);
+  transition: transform 0.35s var(--ease-out);
 }
 .btn-google.nudge {
   animation: nudge 0.45s var(--ease-out) 2;
@@ -3797,6 +4172,8 @@
   gap: 12px;
   font-size: var(--text-xs);
   color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 .or::before,
 .or::after {
@@ -3805,16 +4182,30 @@
   height: 1px;
   background: var(--line);
 }
-.email-toggle {
-  justify-self: start;
-  font-size: var(--text-sm);
-}
+/* Flex, not grid: a closed .reveal's negative margin can cancel the gap in a flex column, but a grid row never shrinks below 0. */
 .authform {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
 }
-.authform .btn {
-  justify-self: start;
+/* An icon inside the input's left edge. */
+.input-icon {
+  position: relative;
+}
+.input-icon > svg {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  color: var(--fg-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: color 0.2s;
+}
+.input-icon .input {
+  padding-left: 36px;
+}
+.input-icon:focus-within > svg {
+  color: var(--accent-text);
 }
 
 @media (max-width: 1080px) {
@@ -3829,8 +4220,7 @@
   .add-grid,
   .pair-card,
   .trust-block,
-  .honest,
-  .login-page {
+  .honest {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s-5);
   }
@@ -3860,21 +4250,17 @@
   .code-form .btn {
     width: 100%;
   }
-  .login-page {
-    padding-block: var(--s-6);
-  }
 }
 
 /* ---------- glass ---------- */
 /* ponytail: one blur per card; dozens of .mcard on a page cost GPU time. Drop .mcard here if scrolling the catalog stutters. */
 .panel,
 .tabs,
-.stats-grid,
+.stat-card,
 .verify-grid li,
 .warming,
 .composer,
 .chat-side,
-.kpi,
 .gpu-block,
 .auto-ticket,
 .mcard,
@@ -3906,4 +4292,128 @@
   background: var(--glass-pop);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* ---------- sign in: motion ---------- */
+/* Entrance: each step waits --i × 70ms. The global reduced-motion rule collapses all of this to the end state. */
+.login-rise {
+  animation: login-rise 0.7s var(--ease-out) backwards; /* backwards: no filter or transform left behind once landed */
+  animation-delay: calc(var(--i, 0) * 70ms + 60ms);
+}
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.45em);
+    filter: blur(8px);
+  }
+}
+.login-perks {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+}
+.login-perks li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.perk-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent);
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  transition: transform 0.3s var(--ease-out);
+}
+.login-perks li:hover .perk-icon {
+  transform: translateY(-2px) rotate(-6deg);
+}
+/* The heading swaps with a short blur when switching between sign in and create account. */
+.login-head {
+  display: grid;
+  gap: 4px;
+  animation: login-swap 0.4s var(--ease-out) backwards;
+}
+@keyframes login-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(4px);
+  }
+}
+
+/* Google: a sheen sweeps across once after the page lands, and again on hover. */
+.btn-google::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, oklch(1 0 0 / 0.45) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: login-sheen 1.1s var(--ease-in-out) 1.2s;
+  pointer-events: none;
+}
+.btn-google:hover:not(:disabled)::after {
+  animation: login-sheen 0.9s var(--ease-in-out);
+}
+.btn-google:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.btn-google:hover .g-badge {
+  transform: rotate(-12deg) scale(1.06);
+}
+@keyframes login-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in oklch, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.g-badge .btn-spinner {
+  color: var(--accent-ink);
+}
+
+/* Height animation for the Name field. The 3px padding keeps focus rings from being clipped. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.45s var(--ease-out), opacity 0.3s, margin 0.45s var(--ease-out);
+}
+.reveal.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.reveal > div {
+  min-height: 0;
+  margin: -3px;
+  padding: 3px;
+  overflow: hidden;
+}
+/* A closed reveal still sits between two gaps; pull one back so it leaves no space. */
+.authform > .reveal:not(.open) {
+  margin-bottom: calc(-1 * var(--s-4));
+}
+.authform .btn {
+  width: 100%;
+}
+.authform .field > span {
+  transition: color 0.2s;
+}
+.authform .field:focus-within > span {
+  color: var(--accent-text);
+}
+.auth .form-error {
+  animation: nudge 0.4s var(--ease-out);
 }

@@ -546,7 +546,7 @@ const FULL = { x: 0.04, y: 0.04, w: 0.92, h: 0.87 };
 export function createGpuScene(canvas, { reduced = false, modelUrl = null, onReady = () => {}, progress = null } = {}) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.outputColorSpace = SRGBColorSpace;
 
   const scene = new Scene();
@@ -559,11 +559,11 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
 
   // Low-key rig: a warm key high on the right, hard cool rim from behind for edge highlights, a gold kick, and
   // no fill so the shadow side falls off.
-  const key = new DirectionalLight('#fff1de', 3.2);
+  const key = new DirectionalLight('#ffe9cf', 3.6);
   key.position.set(4, 6, 5);
-  const rim = new DirectionalLight('#a9c8ff', 5);
+  const rim = new DirectionalLight('#a9c8ff', 7);
   rim.position.set(4, 3, -5);
-  const kick = new DirectionalLight(ACCENT, 2);
+  const kick = new DirectionalLight(ACCENT, 2.8);
   kick.position.set(-6, 1, -3);
   // Turned, the fans face left, away from the key: a soft front-left light keeps them reading.
   const side = new DirectionalLight('#e6eaf0', 0.6);
@@ -724,19 +724,19 @@ export function createGpuScene(canvas, { reduced = false, modelUrl = null, onRea
     });
     if (rig.board) rig.board.emissiveIntensity = 0.28 * smooth(0.62, 0.85, t);
     if (rig.traceGlow) rig.traceGlow.material.opacity = 0.16 * smooth(0.62, 0.85, t) * glowScale;
-    // At rest, a hero shot: seen from below (top leaning away), about 24° of yaw, a slight dutch roll and a long
+    // At rest, a hero shot: seen from below (top leaning away), about 37° of yaw, a dutch roll and a long
     // lens. Opening, the view cranes up over the card while it swings to 43° and levels out, ending on the
     // internals from above: the layers separate mostly in depth, so the opened card stays narrow enough to be
     // big between the side texts. The lens narrows further (the fit keeps the size), so the front layers
     // don't swell and turn edge-on.
     const k = smooth(TURN[0], TURN[1], t);
-    const yaw = MathUtils.lerp(-0.42, -0.75, k);
-    const pitch = MathUtils.lerp(-0.14, 0.4, k);
-    const roll = MathUtils.lerp(0.06, 0, k);
-    camera.fov = MathUtils.lerp(24, 17, k);
-    // Idle: a slow orbit and a drifting camera height, out of phase so the move never visibly loops.
-    root.rotation.set(pitch + idle * Math.sin(time * 0.21) * 0.03, yaw + idle * Math.sin(time * 0.3) * 0.08, roll);
-    root.position.y = idle * Math.sin(time * 0.6) * 0.03;
+    const yaw = MathUtils.lerp(-0.65, -0.75, k);
+    const pitch = MathUtils.lerp(-0.2, 0.4, k);
+    const roll = MathUtils.lerp(0.11, 0, k);
+    camera.fov = MathUtils.lerp(20, 17, k);
+    // Idle: a slow, wide orbit and a drifting camera height, out of phase so the move never visibly loops.
+    root.rotation.set(pitch + idle * Math.sin(time * 0.16) * 0.04, yaw + idle * Math.sin(time * 0.19) * 0.14, roll + idle * Math.sin(time * 0.13) * 0.015);
+    root.position.y = idle * Math.sin(time * 0.45) * 0.04;
     fit(t, pitch, yaw, roll);
     const light = document.documentElement.dataset.theme === 'light';
     const ground = 1 - 0.9 * smooth(0.06, 0.4, t);

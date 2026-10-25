@@ -3,6 +3,7 @@ import { badgeOf, useEvents, usd, clock } from '../api.js';
 import { useNetwork } from '../network.js';
 import { Link, modelPath } from '../router.jsx';
 import { Badge, Machine, Icon, BADGE_COPY } from '../components/ui.jsx';
+import { GlowCard } from '../components/ui/spotlight-card.tsx';
 
 // A real-shaped canary: the reference's greedy answer, cut at 8 word boundaries (the very first is skipped).
 // At each cut both GPUs continue the same text, and the next 3 words must all match.
@@ -24,6 +25,8 @@ const MEASURED = [
   ['0.5B model posing as 7B', 0.33, 'fail'],
 ];
 const PASS = 0.625;
+
+const GLOW = { verified: 'green', consistent: 'blue', new: 'purple', flagged: 'red' };
 
 function Agreement() {
   const [who, setWho] = useState('honest');
@@ -159,10 +162,10 @@ export default function Trust() {
 
       <section className="glance" aria-label="Badges">
         {['verified', 'consistent', 'new', 'flagged'].map((k) => (
-          <div key={k} className={`glance-item g-${k}`}>
+          <GlowCard key={k} glowColor={GLOW[k]} className={`glance-item g-${k}`}>
             <Badge state={k} size="lg" withTip={false} />
             <p>{BADGE_COPY[k].tip}</p>
-          </div>
+          </GlowCard>
         ))}
       </section>
 
