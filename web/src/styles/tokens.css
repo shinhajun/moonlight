@@ -67,7 +67,9 @@
   --panel: oklch(0.18 0.006 265 / 0.72);
   --highlight: inset 0 1px 0 oklch(1 0 0 / 0.12), 0 16px 40px -20px oklch(0 0 0 / 0.7);
   --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 12px 32px -12px oklch(0 0 0 / 0.6);
-  --glass-pop: oklch(0.2 0.01 265 / 0.86);
+  /* Popovers can't blur the page (the masthead's own blur and the page's entrance animation stop it), so they
+     stay all but opaque. */
+  --glass-pop: oklch(0.2 0.01 265 / 0.98);
   --aura-1: oklch(0.84 0.135 82 / 0.26);
   --aura-2: oklch(0.55 0.17 285 / 0.38);
   --aura-3: oklch(0.62 0.12 225 / 0.3);
@@ -107,7 +109,7 @@
   --shadow: 0 1px 2px oklch(0.2 0.01 265 / 0.06), 0 12px 32px -14px oklch(0.2 0.01 265 / 0.18);
   --grid: oklch(0.2 0.01 265 / 0.045);
   --grain: 0.025;
-  --glass-pop: oklch(1 0 0 / 0.88);
+  --glass-pop: oklch(1 0 0 / 0.98);
   --aura-1: oklch(0.85 0.13 82 / 0.35);
   --aura-2: oklch(0.75 0.12 290 / 0.3);
   --aura-3: oklch(0.8 0.09 220 / 0.32);

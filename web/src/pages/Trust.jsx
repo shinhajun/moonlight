@@ -112,7 +112,7 @@ function Measured() {
         <span className="m-track">
           <span style={{ left: 0 }}>0%</span>
           <span className="m-pass-label" style={{ left: pos(PASS) }}>
-            pass mark
+            pass {PASS * 100}%
           </span>
           <span style={{ left: '100%' }}>100%</span>
         </span>

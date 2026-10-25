@@ -149,7 +149,7 @@ export function Icon({ name, size = 16, ...rest }) {
 // ---------------------------------------------------------------- verification badge
 
 const BADGE = {
-  verified: { label: 'Verified', tip: 'Safe to use. We secretly test this seller all the time, and it passed every recent test.' },
+  verified: { label: 'Verified', tip: 'We secretly test this seller all the time, and it passed every recent test.' },
   consistent: { label: 'Consistent', tip: 'One of a kind, so there is nothing to compare it to. We check that it answers the same way every time and stays online.' },
   new: { label: 'New', tip: 'Just joined. Not enough tests yet to say either way.' },
   flagged: { label: 'Flagged', tip: 'Caught failing our tests. Blocked from new work, and its pay is frozen.' },
