@@ -4,29 +4,62 @@ import { useNetwork } from '../network.js';
 import { Link, modelPath } from '../router.jsx';
 import { Badge, Machine, Icon, BADGE_COPY } from '../components/ui.jsx';
 
-// A real-shaped canary: the reference's greedy answer, cut at 8 word boundaries.
-const ANSWER = 'Yeast eats the sugars in the flour and releases carbon dioxide, which gets trapped in the stretchy gluten and makes the dough expand.'.split(' ');
+// A real-shaped canary: the reference's greedy answer, cut at 8 word boundaries (the very first is skipped).
+// At each cut both GPUs continue the same text, and the next 3 words must all match.
+const ANSWER = 'Yeast feeds on the sugars in the flour and gives off carbon dioxide. The gas gets trapped in a stretchy web of gluten, so the dough puffs up. Heat in the oven makes the bubbles expand even more before the crust sets.'.split(' ');
+// Cut position → what each seller's GPU wrote next, where it differs from the reference.
 const GATES = {
-  1: 'feeds',
-  3: 'sugars',
-  6: 'dough',
-  8: 'makes',
-  11: 'which',
-  13: 'trapped',
-  16: 'dough',
-  19: 'makes',
+  1: { cheat: 'eats the sugars' },
+  5: {},
+  9: {},
+  14: { cheat: 'gas makes the' },
+  19: { cheat: 'stretchy gluten network' },
+  24: { cheat: 'the dough rises' },
+  29: {},
+  34: { honest: 'bubbles expand further', cheat: 'dough rise more' },
 };
+// PROTOCOL's measurement on qwen2.5:7b, 3 words at a time.
 const MEASURED = [
-  ['Real AI, asked twice', 0.97, 'pass'],
-  ['Real AI, on a different machine', 0.94, 'pass'],
-  ['Cheaper AI pretending to be the real one', 0.69, 'fail'],
+  ['Honest CPU vs GPU', 0.9, 'pass'],
+  ['0.5B model posing as 7B', 0.33, 'fail'],
 ];
+const PASS = 0.625;
 
 function Agreement() {
   const [who, setWho] = useState('honest');
   const gates = Object.keys(GATES).map(Number);
-  const agree = gates.filter((i) => who === 'honest' || GATES[i] === ANSWER[i]).length;
-  const pass = agree >= 7;
+  const next = (i) => ANSWER.slice(i, i + 3).join(' ');
+  const agree = gates.filter((i) => (GATES[i][who] ?? next(i)) === next(i)).length;
+  const pass = agree >= 5;
+  const text = [];
+  for (let i = 0; i < ANSWER.length; i++) {
+    if (!(i in GATES)) {
+      text.push(<span key={i}>{ANSWER[i]} </span>);
+      continue;
+    }
+    const ref = next(i).split(' ');
+    const home = (GATES[i][who] ?? next(i)).split(' ');
+    const ok = home.every((w, j) => w === ref[j]);
+    text.push(
+      <span key={`${i}-${who}`} className={`gate ${ok ? 'ok' : 'miss'}`} style={{ animationDelay: `${gates.indexOf(i) * 70}ms` }}>
+        {ref.map((w, j) => (
+          <span key={`r${j}`} className="gate-ref">
+            {w}
+          </span>
+        ))}
+        {home.map((w, j) => (
+          <span key={`h${j}`} className={`gate-home${w === ref[j] ? '' : ' diff'}`}>
+            {w}
+          </span>
+        ))}
+        <span className="gate-mark" aria-label={ok ? 'agrees' : 'disagrees'}>
+          {ok ? '✓' : '✕'}
+        </span>
+      </span>,
+      ' ',
+    );
+    i += 2;
+  }
   return (
     <div className="agree">
       <div className="agree-controls" role="radiogroup" aria-label="Which GPU">
@@ -39,61 +72,46 @@ function Agreement() {
       </div>
       <p className="small muted">{who === 'honest' ? 'Runs the AI it advertises.' : 'Advertises a big AI, but secretly runs a cheaper one.'}</p>
       <p className="agree-prompt">
-        <span className="label">Secret test question</span> In one sentence, why does bread dough rise?
+        <span className="label">Test job</span> Why does bread dough rise?
       </p>
-      <p className="agree-text">
-        {ANSWER.map((w, i) => {
-          if (!(i in GATES)) return <span key={i}>{w} </span>;
-          const home = who === 'honest' ? w : GATES[i];
-          const ok = home === w;
-          return (
-            <span key={`${i}-${who}`} className={`gate ${ok ? 'ok' : 'miss'}`} style={{ animationDelay: `${gates.indexOf(i) * 70}ms` }}>
-              <span className="gate-ref">{w.replace(/[.,]/g, '')}</span>
-              <span className="gate-home">{home.replace(/[.,]/g, '')}</span>
-              <span className="gate-mark" aria-label={ok ? 'agrees' : 'disagrees'}>
-                {ok ? '✓' : '✕'}
-              </span>{' '}
-            </span>
-          );
-        })}
-      </p>
+      <p className="agree-text">{text}</p>
       <div className="agree-legend small">
         <span>
-          <i className="lg-ref" /> small word: the right answer
+          <i className="lg-ref" /> the reference&apos;s next 3 words
         </span>
         <span>
-          <i className="lg-home" /> big word: the seller&apos;s guess
+          <i className="lg-home" /> the seller&apos;s next 3 words
         </span>
       </div>
       <div className={`agree-result ${pass ? 'pass' : 'fail'}`}>
-        <b className="num">{agree} of 8</b> guesses right
-        <span>{pass ? 'Passes (needs 7 of 8)' : 'Fails (needs 7 of 8)'}</span>
+        <b className="num">{agree} of 8</b> match all 3 words
+        <span>{pass ? 'Passes (needs 5 of 8)' : 'Fails (needs 5 of 8)'}</span>
         <Badge state={pass ? 'verified' : 'flagged'} size="lg" withTip={false} />
       </div>
     </div>
   );
 }
 
-// Measured agreement scores as bars on a 50–100% scale, with the 7-of-8 pass line.
+// Measured agreement scores as bars on a 0–100% scale, with the 5-of-8 pass line.
 function Measured() {
-  const pos = (v) => `${((v - 0.5) / 0.5) * 100}%`;
+  const pos = (v) => `${v * 100}%`;
   return (
     <figure className="measured">
-      <figcaption className="label">How often the guess is right, from real tests</figcaption>
+      <figcaption className="label">Measured agreement, 3 words at a time</figcaption>
       {MEASURED.map(([label, v, k]) => (
         <div key={label} className={`m-row ${k}`}>
           <span className="m-label">{label}</span>
           <span className="m-track">
             <span className="m-fill" style={{ width: pos(v) }} />
-            <span className="m-pass" style={{ left: pos(0.875) }} aria-hidden />
+            <span className="m-pass" style={{ left: pos(PASS) }} aria-hidden />
           </span>
           <b className="num">{Math.round(v * 100)}%</b>
         </div>
       ))}
       <div className="m-row m-scale num" aria-hidden>
         <span className="m-track">
-          <span style={{ left: 0 }}>50%</span>
-          <span className="m-pass-label" style={{ left: pos(0.875) }}>
+          <span style={{ left: 0 }}>0%</span>
+          <span className="m-pass-label" style={{ left: pos(PASS) }}>
             pass mark
           </span>
           <span style={{ left: '100%' }}>100%</span>
@@ -150,14 +168,15 @@ export default function Trust() {
 
       <section className="trust-block">
         <div className="trust-copy">
-          <p className="eyebrow">The test</p>
-          <h2 className="h2">Fill in the blank</h2>
+          <p className="eyebrow">The check</p>
+          <h2 className="h2">Guess the next three words</h2>
           <p>
-            We stop a sentence partway and ask the seller&apos;s AI for <b>just the next word</b>. We already know the right word, because we run the same AI ourselves.
+            Two honest GPUs rarely write the same paragraph word for word, so comparing whole answers would fail honest sellers. Instead we take a reference answer, cut it off at 8
+            places, and ask the seller&apos;s GPU for just the <b>next three words</b> at each.
           </p>
           <p className="muted">
-            The real AI picks the right word almost every time. A cheaper AI pretending to be the real one gets a lot of them wrong, and that is how we catch it. Try both
-            sellers on the right.
+            The same half-finished text goes to a reference GPU too. A place counts only if all three words match, and passing takes 5&nbsp;of&nbsp;8. A GPU running the model it claims
+            clears that easily. A smaller model wearing the same label doesn&apos;t.
           </p>
           <Measured />
         </div>

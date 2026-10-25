@@ -7,11 +7,14 @@ import { Badge, Machine, Icon, RollingNumber, useNow, useTween } from '../compon
 
 const METHOD_LABEL = { canary: 'Canary', replay: 'Replay', peer: 'Peer check', consistency: 'Consistency' };
 const METRIC = {
-  agreement: (s, t) => `next-word agreement ${Math.round(s * 100)}% (needs ${Math.round(t * 100)}%)`,
+  agreement: (s, t) => `3-word agreement ${+(s * 100).toFixed(1)}% (needs ≥ ${+(t * 100).toFixed(1)}%)`,
   max_dp: (s, t) => `max Δp ${s.toFixed(3)} (needs ≤ ${t})`,
   cosine: (s, t) => `cosine ${s.toFixed(3)} (needs ≥ ${t})`,
   match: (s) => (s >= 1 ? 'same answer twice' : 'answers differed'),
 };
+
+// Earnings keep their tiny amounts ($0.000026), and an empty day reads $0.00.
+const earned = (micro) => (micro ? usd(micro) : '$0.00');
 
 function Kpi({ label, children, note, tone }) {
   return (
@@ -32,7 +35,7 @@ function EarningsKpis({ me, nodes }) {
     }
   });
   const total = useTween(me.earnings.total + extra.total, 900);
-  const today = me.earnings.today + extra.total;
+  const today = (nodes || []).reduce((a, n) => a + (n.earnings?.today ?? 0), 0);
   const held = me.earnings.held + extra.held;
   const all = (nodes || []).flatMap((n) => n.models);
   const live = all.filter((m) => m.policy === 'live').length;
@@ -43,10 +46,10 @@ function EarningsKpis({ me, nodes }) {
         <RollingNumber value={usd(Math.round(total), 6)} className="kpi-big" />
       </Kpi>
       <Kpi label="Today">
-        <span className="num kpi-num">{usd(today, 4)}</span>
+        <span className="num kpi-num">{nodes ? earned(today) : '—'}</span>
       </Kpi>
       <Kpi label="Held" tone={held > 0 ? 'bad' : undefined} note={held > 0 ? 'From flagged listings, until they pass again' : 'Nothing held'}>
-        <span className="num kpi-num">{usd(held, 4)}</span>
+        <span className="num kpi-num">{earned(held)}</span>
       </Kpi>
       <Kpi label="Live models" note={nodes ? `${online} of ${nodes.length} GPUs online` : ' '}>
         <span className="num kpi-num">{nodes ? live : '—'}</span>
@@ -150,11 +153,11 @@ function GpuCard({ node, now }) {
           </div>
           <div>
             <dt>Earned</dt>
-            <dd className="num">{usd(node.earnings?.total ?? 0)}</dd>
+            <dd className="num">{earned(node.earnings?.total)}</dd>
           </div>
           <div>
             <dt>Today</dt>
-            <dd className="num">{usd(node.earnings?.today ?? 0)}</dd>
+            <dd className="num">{earned(node.earnings?.today)}</dd>
           </div>
         </dl>
       </div>
@@ -242,9 +245,24 @@ function VerificationLog({ me }) {
 function Selling({ me }) {
   const { data, reload } = useApi('/api/me/nodes', { interval: 10_000 });
   const now = useNow(15_000);
-  const nodes = data?.nodes;
+  // Earnings since the last load, per GPU, from live events. The Today tile and every card add the same tally to
+  // the same /api/me/nodes numbers, so they always agree.
+  const [live, setLive] = useState({});
+  useEffect(() => setLive({}), [data]);
+  const nodes = useMemo(
+    () =>
+      data?.nodes.map((n) => {
+        const x = live[n.node_id];
+        return x ? { ...n, earnings: { total: (n.earnings?.total ?? 0) + x, today: (n.earnings?.today ?? 0) + x } } : n;
+      }),
+    [data, live],
+  );
   useEvents((type, d) => {
     if ((type === 'node' || type === 'verification') && d.seller_id === me.account.id) reload();
+    if (type === 'earning' && d.seller_id === me.account.id && !d.held) {
+      const n = data?.nodes.find((n) => n.models.some((m) => m.listing_id === d.listing_id));
+      if (n) setLive((x) => ({ ...x, [n.node_id]: (x[n.node_id] ?? 0) + d.amount_microusd }));
+    }
   });
   const flagged = (nodes || []).flatMap((n) => n.models.filter((m) => badgeOf(m.verification) === 'flagged').map((m) => ({ ...m, node: n })));
   return (

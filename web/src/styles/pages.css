@@ -3468,9 +3468,9 @@
 }
 .gate {
   display: inline-grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: repeat(3, auto) auto;
   grid-template-rows: auto auto;
-  column-gap: 4px;
+  column-gap: 0.3em;
   margin-right: 2px;
   padding: 2px 6px;
   border-radius: 6px;
@@ -3489,8 +3489,9 @@
 }
 .gate-mark {
   grid-row: 1 / span 2;
-  grid-column: 2;
+  grid-column: 4;
   align-self: center;
+  margin-left: 2px;
   font-size: 0.75rem;
 }
 .gate.ok {
@@ -3502,7 +3503,7 @@
 .gate.miss {
   background: var(--bad-bg);
 }
-.gate.miss .gate-home,
+.gate-home.diff,
 .gate.miss .gate-mark {
   color: var(--bad);
 }

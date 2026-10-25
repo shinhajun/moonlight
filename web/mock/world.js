@@ -160,9 +160,11 @@ for (const s of SEED) {
   for (const spec of s.nodes) {
     const node = makeNode(u, spec);
     for (const [model_id, opts] of spec.models) makeListing(u, node, model_id, opts);
+    // Today is the sum of each GPU's today, as in the gateway.
+    node.earnings.today = Math.round(node.earnings.total * 0.12);
+    u.earnings.today += node.earnings.today;
   }
   u.earnings.total = [...state.listings.values()].filter((l) => l.user_id === u.id).reduce((a, l) => a + l.earned, 0);
-  u.earnings.today = Math.round(u.earnings.total * 0.12);
   u.earnings.held = [...state.listings.values()].filter((l) => l.user_id === u.id).reduce((a, l) => a + l.held, 0);
 }
 
@@ -542,11 +544,11 @@ function vlogEntry(l, passed, ts = now()) {
   const metric = method === 'consistency' ? 'match' : l.kind === 'chat' ? 'agreement' : l.kind === 'embedding' ? 'cosine' : 'max_dp';
   const score = {
     match: passed ? 1 : 0,
-    agreement: passed ? pick([0.875, 1, 1, 0.875]) : pick([0.25, 0.375, 0.5, 0.625]),
+    agreement: passed ? pick([0.75, 0.875, 0.875, 1]) : pick([0.125, 0.25, 0.375, 0.5]),
     cosine: passed ? +rand(0.991, 0.999).toFixed(3) : +rand(0.6, 0.9).toFixed(3),
     max_dp: passed ? +rand(0.003, 0.03).toFixed(3) : +rand(0.09, 0.3).toFixed(3),
   }[metric];
-  const threshold = { match: 1, agreement: 0.875, cosine: 0.99, max_dp: 0.05 }[metric];
+  const threshold = { match: 1, agreement: 0.625, cosine: 0.99, max_dp: 0.05 }[metric];
   return { ts, listing_id: l.listing_id, model_id: l.model_id, method, passed, metric, score, threshold, state_after: displayState(l) };
 }
 
