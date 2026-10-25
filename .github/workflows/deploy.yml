@@ -1,0 +1,76 @@
+# Deploy the gateway, the web app and agent.mjs to the VM on every push to main that touches them.
+# Agent release binaries (agent/release) are not built here; ship those with deploy/deploy.sh by hand.
+# Repo settings: secret DEPLOY_SSH_KEY (key for the VM's moonlight-deploy user),
+# variables DEPLOY_HOST (the VM's IP) and DEPLOY_KNOWN_HOSTS (its host keys).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gateway/**"
+      - "web/**"
+      - "agent/agent.mjs"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one halfway through
+concurrency:
+  group: moonlight-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            gateway/package-lock.json
+            web/package-lock.json
+
+      - name: Test the gateway
+        working-directory: gateway
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+      - name: Build the web app
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/moonlight_deploy
+          chmod 600 ~/.ssh/moonlight_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          KEEP_REMOTE_SECRETS: "1"
+        run: deploy/deploy.sh
+
+      - name: Check that the live site serves this build
+        run: |
+          want=$(grep -oE 'assets/index-[^"]+\.js' web/dist/index.html | head -1)
+          for i in $(seq 1 10); do
+            if curl -fsS https://moonlight.hajunshin.com/ | grep -q "$want"; then echo "live: $want"; exit 0; fi
+            sleep 3
+          done
+          echo "the live site does not serve $want"
+          exit 1
