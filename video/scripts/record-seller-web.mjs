@@ -1,6 +1,7 @@
 // Browser side of the seller flow, as "Demo Seller": approve the pairing code the terminal printed, then the web
 // dashboard's GPU card. Runs alongside record-seller.py, which writes the marker files in out/tmp/sync.
 // → out/assets/rec/pair.mp4, seller-web.mp4 and a .json with each one's wall-clock start and click positions.
+// --dashboard-only films just the web dashboard, at once (for record-dashboard.py).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { BASE, launch, newPage, screencast, toCfr } from './lib/browser.mjs';
 
@@ -22,29 +23,33 @@ const { ctx, page } = await newPage(browser);
 const login = await ctx.request.post(`${BASE}/api/auth/login`, { data: { email: seller.email, password: seller.password } });
 if (!login.ok()) throw new Error(`login ${login.status()}`);
 
+const dashboardOnly = process.argv.includes('--dashboard-only');
+
 // 1. Approve
+if (!dashboardOnly) {
 const code = await wait('pair_code');
 await page.goto(`${BASE}/pair/${code}`, { waitUntil: 'networkidle' });
 await page.getByRole('button', { name: 'Approve' }).waitFor();
-let rec = await screencast(page);
+const rec = await screencast(page);
 await sleep(2600);
 const btn = page.getByRole('button', { name: 'Approve' });
 const box = await btn.boundingBox();
 const clickAt = Date.now() / 1000;
 await btn.click();
 await sleep(4500);
-let frames = await rec.stop();
+const frames = await rec.stop();
 writeFileSync(`${OUT}assets/rec/pair.json`, JSON.stringify({ epoch: rec.epoch(), click: { epoch: clickAt, box } }, null, 2));
 toCfr(frames, `${OUT}assets/rec/pair.mp4`, { dir: `${OUT}tmp/pair` });
+await wait('web_dashboard');
+}
 
 // 2. The web dashboard while the agent serves
-await wait('web_dashboard');
 await page.goto(`${BASE}/me/sell`, { waitUntil: 'networkidle' });
 await page.locator('.gpu-card').first().waitFor();
 await sleep(800);
-rec = await screencast(page);
+const rec = await screencast(page);
 await sleep(14_000);
-frames = await rec.stop();
+const frames = await rec.stop();
 writeFileSync(`${SYNC}web_done`, '');
 writeFileSync(`${OUT}assets/rec/seller-web.json`, JSON.stringify({ epoch: rec.epoch() }, null, 2));
 toCfr(frames, `${OUT}assets/rec/seller-web.mp4`, { dir: `${OUT}tmp/seller-web` });
