@@ -310,7 +310,8 @@ export default function Chat() {
   }, [chats, currentId]);
 
   const saved = chats.filter((c) => c.messages.length).sort((a, b) => b.updated - a.updated);
-  const q = query.trim().toLowerCase();
+  // The query only applies while the search box shows, so deleting down to 4 chats can't leave a hidden filter.
+  const q = saved.length > 4 ? query.trim().toLowerCase() : '';
   // ponytail: scans every message of up to 50 saved chats per keystroke; fine at this size.
   const shown = q ? saved.filter((c) => c.title.toLowerCase().includes(q) || c.messages.some((m) => m.content?.toLowerCase().includes(q))) : saved;
 
@@ -326,7 +327,7 @@ export default function Chat() {
             <input type="search" placeholder="Search chats" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search chats" />
           </label>
         )}
-        {query && shown.length === 0 && <p className="faint small chat-none">No chats match “{query}”.</p>}
+        {q && shown.length === 0 && <p className="faint small chat-none">No chats match “{query}”.</p>}
         {groupByDay(shown).map(([label, group]) => (
           <section key={label} className="chat-group">
             <h2 className="chat-group-label">{label}</h2>

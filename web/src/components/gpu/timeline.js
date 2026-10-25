@@ -8,7 +8,7 @@ export const smooth = (a, b, x) => {
 
 // The side copy steps aside first so the card and the story own the screen.
 export const COPY = [0.02, 0.11];
-// The card turns from about 15° to 43° of yaw and tilts toward the viewer; done by the VRAM beat.
+// The card turns from about 24° to 43° of yaw as the view cranes up over it; done by the VRAM beat.
 export const TURN = [0.04, 0.62];
 // Layers leave in order; the PCB stays put. The rest of the scroll holds the opened card.
 export const LAYERS = {

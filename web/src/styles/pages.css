@@ -3894,6 +3894,12 @@
 .chat-side {
   background: var(--bg-1);
 }
+/* As a drawer it covers the conversation, which nothing blurs, so it stays solid. */
+@media (max-width: 860px) {
+  .chat-side {
+    background: var(--bg-3);
+  }
+}
 /* Popovers sit inside the blurred masthead, where a second blur can't reach the page, so they stay nearly opaque. */
 .acct-pop,
 .picker-pop {
