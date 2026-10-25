@@ -13,3 +13,5 @@ __pycache__/
 video/out/
 video/.claude/skills/
 video/skills-lock.json
+.DS_Store
+._*
