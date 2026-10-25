@@ -75,7 +75,8 @@ export async function stepFrames(page, { dir, frames, fps = 30, perFrame }) {
   }
 }
 
-// Real-time recording through CDP screencast. stop() resolves to [{t (s since the first frame), buf}].
+// Real-time recording through CDP screencast. stop() resolves to [{t (s since the first frame), buf}], with
+// .duration: the wall-clock length, since Chrome sends no frames while the page doesn't repaint.
 export async function screencast(page) {
   const cdp = await page.context().newCDPSession(page);
   const frames = [];
@@ -93,6 +94,7 @@ export async function screencast(page) {
     epoch: () => t0,
     async stop() {
       await cdp.send('Page.stopScreencast').catch(() => {});
+      frames.duration = Date.now() / 1000 - t0;
       return frames;
     },
   };
@@ -102,7 +104,7 @@ export async function screencast(page) {
 export function toCfr(frames, out, { fps = 30, dir, until } = {}) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const end = until ?? frames.at(-1).t + 0.5;
+  const end = until ?? frames.duration ?? frames.at(-1).t + 0.5;
   let j = 0;
   const n = Math.ceil(end * fps);
   for (let i = 0; i < n; i++) {
